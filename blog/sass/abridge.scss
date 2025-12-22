@@ -21,7 +21,7 @@
   $ic: true,// true for colorized icons, otherwise #888 is used.
 
   $icon-rss: true,
-  $icon-mail: true,// e-mail
+  $icon-mail: false,// e-mail
   $icon-mastodon: false,
   $icon-element: false,
   $icon-matrix: false,
@@ -29,10 +29,10 @@
   $icon-kofi: false,
   $icon-twitter: false,
   $icon-facebook: false,
-  $icon-linkedin: true,
+  $icon-linkedin: false,
   $icon-codeberg: false,
   $icon-gitlab: false,
-  $icon-github: true,
+  $icon-github: false,
   $icon-github-sponsor: false,
   $icon-bitbucket: false,
   $icon-python: false,
@@ -46,6 +46,7 @@
   $icon-youtube: false,
   $icon-peertube: false,
   $icon-researchgate: false,
+  $icon-telegram: false,
 
   //$icon-x: true,// x symbol, used to close search results page.
   //$icon-search: true,//search, spyglass search button in search box.
@@ -193,6 +194,7 @@
   //$misc: false,
   //$grid: true,//Infinity Grid, column based layouts.
   //$syntax: true,//syntax highlighting for code blocks
+  //$coderoundhighlight: false,//round corners on highlighted code blocks
 );
 @use "extra";
 /******************************************************************************

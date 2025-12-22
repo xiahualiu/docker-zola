@@ -1,0 +1,9 @@
+services:
+  zola:
+    build:
+      context: ./zola
+    image: docker-web/zola:local
+    ports:
+      - "1111:1111"
+    volumes:
+      - ./blog:/blog

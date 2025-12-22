@@ -1,3 +1,7 @@
 FROM alpine:latest
-RUN apk add zola
+
+RUN apk add --no-cache zola
+
 WORKDIR /blog
+
+ENTRYPOINT ["zola"]
