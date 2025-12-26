@@ -3,15 +3,15 @@ title = "LeetCode Binary Tree Question Summary"
 date = 2024-11-09
 draft = false
 [taxonomies]
-  tags = ["LeetCode", "C++", "Algorithm", "Binary Tree"]
+  tags = ["LeetCode", "C++", "Algorithm"]
 [extra]
   toc = true
-	keywords = "LeetCode, C++, Algorithm, Binary Tree"
+	keywords = "LeetCode, C++, Algorithm
 +++
 
 ## Type Definition
 
-It is usually defined as:
+In LeetCode problems, the binary tree node is standardly defined as:
 
 ```cpp
 struct TreeNode {
@@ -27,248 +27,301 @@ struct TreeNode {
 
 ## Binary Tree Traversal
 
-There are 3 traversal orders:
-
-* Pre-order traversal.
-* In-order traversal.
-* Post-order traversal.
+Tree traversal is the foundation of almost every tree problem. There are three standard Depth-First Search (DFS) orders.
 
 ### Pre-Order Traversal
 
-Pre-order traversal visits root first, then left node, then right node.
+**Order:** Root $\rightarrow$ Left $\rightarrow$ Right.
 
-#### Iterative style
+#### Iterative Style
+
+**Note**: We use a `stack` here. Because a stack is LIFO (Last In, First Out), we push the right child first so that the left child is popped and processed first.
 
 ```cpp
 void pre_order(TreeNode* root) {
-    auto next = queue<TreeNode*>({root});
-    while (!next.empty()) {
-        auto cur = next.front();
-        next.pop();
-        // Do something to cur
+    if (!root) return;
+    
+    stack<TreeNode*> st;
+    st.push(root);
+    
+    while (!st.empty()) {
+        TreeNode* cur = st.top();
+        st.pop();
+        
+        // 1. Process Root
         cout << cur->val << endl;
-        if (cur->left != nullptr) {
-            next.push(cur->left);
-        }
+        
+        // 2. Push Right (so it is processed last)
         if (cur->right != nullptr) {
-            next.push(cur->right);
+            st.push(cur->right);
+        }
+        // 3. Push Left (so it is processed next)
+        if (cur->left != nullptr) {
+            st.push(cur->left);
         }
     }
 }
 ```
 
-#### Recursive style
+#### Recursive Style
 
 ```cpp
-void pre_order(ListNode* cur) {
+void pre_order(TreeNode* cur) {
     if (cur == nullptr) {
         return;
-    } else {
-        // Do something to cur
-        pre_order(cur->left);
-        pre_order(cur->right);
     }
+    // 1. Process Root
+    cout << cur->val << endl; 
+    // 2. Go Left
+    pre_order(cur->left);
+    // 3. Go Right
+    pre_order(cur->right);
 }
 ```
 
 ### In-Order Traversal
 
-This type of traversal is only viable through either a `stack` or recursive functions.
+**Order:** Left $\rightarrow$ Root $\rightarrow$ Right.
 
-We push left child to stack if left child is not `nullptr`, if left child is `nullptr`, push right child to the stack, and do something to current node and pop current node from stack.
+This order is critical for **Binary Search Trees (BST)** because in-order traversal of a BST yields the values in sorted (ascending) order.
 
-#### Iterative style
+#### Iterative Style
 
-In order to interatively do the post-order traversal, a `stack` is needed.
-
-* if current node is not null, we push current node to stack, and go to left.
-* if current node is null, we backtrack to top of the stack.
-    * Do something to current node.
-    * Go to right node.
+We traverse to the leftmost node, push nodes onto the stack along the way, process the node, and then switch to the right child.
 
 ```cpp
 void in_order(TreeNode* root) {
-    auto next = stack<TreeNode*>();
-    auto cur = root;
-    while (!next.empty() || cur != nullptr) {
+    stack<TreeNode*> st;
+    TreeNode* cur = root;
+    
+    while (!st.empty() || cur != nullptr) {
         if (cur != nullptr) {
-            next.push(cur);
+            // Keep going left
+            st.push(cur);
             cur = cur->left;
         } else {
-            cur = next.top();
-            next.pop();
-            // Do something to cur
+            // Backtrack
+            cur = st.top();
+            st.pop();
+            
+            // Process Node
+            cout << cur->val << endl;
+            
+            // Go right
             cur = cur->right;
         }
     }
 }
 ```
 
-#### Recursive style
+#### Recursive Style
 
 ```cpp
 void in_order(TreeNode* cur) {
     if (cur == nullptr) {
         return;
-    } else {
-        in_order(cur->left);
-        // Do something to cur
-        in_order(cur->right);
     }
+    in_order(cur->left);
+    // Process Node
+    cout << cur->val << endl;
+    in_order(cur->right);
 }
 ```
 
 ### Post-Order Traversal
 
-#### Iterative style
+**Order:** Left $\rightarrow$ Right $\rightarrow$ Root.
 
-TBD
+This is useful when you need to process children before the parent (e.g., deleting a tree, or calculating height).
 
-#### Recursive style
+#### Iterative Style
+
+A common trick to implement this iteratively is to use **two stacks**.
+
+1. Perform a modified pre-order traversal (Root $\rightarrow$ Right $\rightarrow$ Left).
+2. Store the result in a second stack (or reverse the result vector).
+
+```cpp
+void post_order(TreeNode* root) {
+    if (!root) return;
+
+    stack<TreeNode*> s1, s2;
+    s1.push(root);
+
+    while (!s1.empty()) {
+        TreeNode* cur = s1.top();
+        s1.pop();
+        s2.push(cur); // Store for reverse printing
+
+        // Push Left then Right (so Right is processed first in s1)
+        if (cur->left) s1.push(cur->left);
+        if (cur->right) s1.push(cur->right);
+    }
+
+    // Print s2 to get Left -> Right -> Root
+    while (!s2.empty()) {
+        cout << s2.top()->val << endl;
+        s2.pop();
+    }
+}
+```
+
+#### Recursive Style
 
 ```cpp
 void post_order(TreeNode* cur) {
     if (cur == nullptr) {
         return;
-    } else {
-        post_order(cur->left);
-        post_order(cur->right);
-        // Do something to cur
     }
+    post_order(cur->left);
+    post_order(cur->right);
+    // Process Node
+    cout << cur->val << endl;
 }
 ```
 
-## Binary Tree BFS
+## Binary Tree BFS (Level Order)
 
-Sometimes the question requires BFS on a binary tree, like print each level from left to right.
+Breadth-First Search (BFS) processes the tree level by level.
 
-### Iterative style
+### Iterative Style
+
+This is the standard approach using a `queue`.
 
 ```cpp
 void bfs(TreeNode* root) {
-    auto next = queue<TreeNode*>({root});
-    while (!next.empty()) {
-        for (auto i = 0; i < next.size(); i++) {
-            auto cur = next.front();
-            next.pop();
-            if (cur != nullptr) {
-                // Do something to cur
-                next.push(cur->left);
-                next.push(cur->right);
-            }
+    if (!root) return;
+    queue<TreeNode*> q;
+    q.push(root);
+    
+    while (!q.empty()) {
+        int levelSize = q.size(); // Snapshot size for current level
+        
+        for (int i = 0; i < levelSize; i++) {
+            TreeNode* cur = q.front();
+            q.pop();
+            
+            // Process Node
+            cout << cur->val << " ";
+            
+            if (cur->left) q.push(cur->left);
+            if (cur->right) q.push(cur->right);
         }
+        cout << endl; // End of level
     }
 }
 ```
 
-### Recursive style
+### Recursive Style
+
+Recursive BFS is less common but can be achieved by passing the queue to the recursive function.
 
 ```cpp
-void bfs(queue<TreeNode*>& next) {
-    if (next.empty()) {
-        return;
-    } else {
-        for (auto i = 0; i < next.size(); i++) {
-            auto cur = next.front();
-            next.pop();
-            if (cur != nullptr) {
-                // Do something to cur
-                next.push(cur->left);
-                next.push(cur->right);
-            }
-        }
-        bfs(next);
+void bfs_recursive(queue<TreeNode*>& q) {
+    if (q.empty()) return;
+    
+    int levelSize = q.size();
+    for (int i = 0; i < levelSize; i++) {
+        TreeNode* cur = q.front();
+        q.pop();
+        
+        // Process Node
+        cout << cur->val << " ";
+        
+        if (cur->left) q.push(cur->left);
+        if (cur->right) q.push(cur->right);
     }
+    cout << endl;
+    
+    bfs_recursive(q);
 }
 ```
 
 ## Examples
 
-### Pre-order Traversal Question
+### Pre-order Traversal: Path Sum
 
-[LeetCode Question 112: Path Sum](https://leetcode.com/problems/path-sum/)
+**Problem:** [LeetCode 112: Path Sum](https://leetcode.com/problems/path-sum/description/)
 
-In order to get the path sum, you need to visit from parent to child nodes, this requires us to use pre order traversal.
+To check the path sum, we must traverse from parent to child, subtracting the current node's value from the target sum. If we reach a leaf and the remaining sum is 0, we found a path.
 
-Also we need to add leaf node check in the pre-order traversal algorithm when we return.
-
-#### Iterative style
+#### Iterative Solution
 
 ```cpp
 bool hasPathSum(TreeNode* root, int targetSum) {
-    auto next = stack<pair<TreeNode*, int>>({pair(root, targetSum)});
-    while (!next.empty()) {
-        auto cur = next.top();
-        next.pop();
-        if (cur.first == nullptr) {
-            continue;
+    if (!root) return false;
+    
+    // Stack stores pairs of {Node, Remaining_Sum}
+    stack<pair<TreeNode*, int>> st;
+    st.push({root, targetSum});
+    
+    while (!st.empty()) {
+        auto [node, currentSum] = st.top();
+        st.pop();
+        
+        currentSum -= node->val;
+        
+        // Check if leaf
+        if (!node->left && !node->right && currentSum == 0) {
+            return true;
         }
-        auto curSum = cur.second - cur.first->val;
-        if (cur.first->left == nullptr && cur.first->right == nullptr) {
-            if (curSum == 0) {
-                return true;
-            }
-        }
-        next.push(pair(cur.first->left, curSum));
-        next.push(pair(cur.first->right, curSum));
+        
+        if (node->right) st.push({node->right, currentSum});
+        if (node->left) st.push({node->left, currentSum});
     }
     return false;
 }
 ```
 
-#### Recursive style
+#### Recursive Solution
 
 ```cpp
 bool hasPathSum(TreeNode* root, int targetSum) {
-        bool result = false;
-        hasPathSumCore(root, targetSum, result);
-        return result;
-}
-
-void hasPathSumCore(TreeNode* cur, int targetSum, bool& result) {
-    if (result) {
-        return;
+    if (root == nullptr) {
+        return false;
     }
-    if (cur == nullptr) {
-        return;
+    
+    targetSum -= root->val;
+    
+    // Check if leaf
+    if (root->left == nullptr && root->right == nullptr) {
+        return targetSum == 0;
     }
-    targetSum = targetSum - cur->val;
-    if (cur->left == nullptr && cur->right == nullptr) {
-        if (targetSum == 0) {
-            result = true;
-            return;
-        }
-    }
-    hasPathSum(cur->left, targetSum, result);
-    hasPathSum(cur->right, targetSum, result);
+    
+    return hasPathSum(root->left, targetSum) || hasPathSum(root->right, targetSum);
 }
 ```
 
-### In-order Traversal Question
+### In-order Traversal: Min Difference in BST
 
-[530. Minimum Absolute Difference in BST](https://leetcode.com/problems/minimum-absolute-difference-in-bst/)
+**Problem:** [LeetCode 530. Minimum Absolute Difference in BST](https://leetcode.com/problems/minimum-absolute-difference-in-bst/description/)
 
-This problem requires us to do in-order traversal, and there is a key point of solving this question:
+**Key Insight:** Since an in-order traversal of a BST visits nodes in sorted order ($v_1 < v_2 < v_3 ...$), the minimum difference must occur between two adjacent nodes in this traversal.
 
-In-order traversal of a BST equals to visiting all elements on BST in sorted order.
-
-#### Iterative style
+#### Iterative Solution
 
 ```cpp
 int getMinimumDifference(TreeNode* root) {
-    auto next = stack<TreeNode*>();
-    auto cur = root;
-    auto last = -100000;
-    auto result = INT_MAX;
-    while(!next.empty() || cur != nullptr) {
+    stack<TreeNode*> st;
+    TreeNode* cur = root;
+    int result = INT_MAX;
+    int prev_val = -1; // Use a flag or -1 if values are non-negative
+    bool first_node = true;
+
+    while (!st.empty() || cur != nullptr) {
         if (cur != nullptr) {
-            next.push(cur);
+            st.push(cur);
             cur = cur->left;
         } else {
-            cur = next.top();
-            next.pop();
-            result = min(result, cur->val - last);
-            last = cur->val;
+            cur = st.top();
+            st.pop();
+            
+            if (!first_node) {
+                result = min(result, cur->val - prev_val);
+            }
+            
+            prev_val = cur->val;
+            first_node = false;
             cur = cur->right;
         }
     }
@@ -276,98 +329,105 @@ int getMinimumDifference(TreeNode* root) {
 }
 ```
 
-#### Recursive style
+#### Recursive Solution
 
 ```cpp
-int getMinimumDifference(TreeNode* root) {
-    int mind = INT_MAX;
-    int last = -100000;
-    inorderTraversal(root, last, mind);
-    return mind;
-}
-
-void inorderTraversal(TreeNode* root, int& last, int& mind) {
-    if (root == nullptr) {
-        return;
-    } else {
-        inorderTraversal(root->left, last, mind);
-        mind = min(mind, root->val - last);
-        last = root->val;
-        inorderTraversal(root->right, last, mind);
+class Solution {
+    int min_diff = INT_MAX;
+    TreeNode* prev = nullptr; // Track the previous node pointer
+    
+public:
+    int getMinimumDifference(TreeNode* root) {
+        inorder(root);
+        return min_diff;
     }
-}
+
+    void inorder(TreeNode* node) {
+        if (!node) return;
+        
+        inorder(node->left);
+        
+        if (prev != nullptr) {
+            min_diff = min(min_diff, node->val - prev->val);
+        }
+        prev = node;
+        
+        inorder(node->right);
+    }
+};
 ```
 
-### Post-order Traversal Question
+### Post-order Traversal: Lowest Common Ancestor
 
-[LeetCode Question 236: Lowest Common Ancestor of a Binary Tree](https://leetcode.com/problems/lowest-common-ancestor-of-a-binary-tree/)
+**Problem:** [LeetCode 236: Lowest Common Ancestor](https://leetcode.com/problems/lowest-common-ancestor-of-a-binary-tree/description/)
 
-This is a typical post-order traversal question. You need to work from the leaf nodes up to the parents nodes.
+We work from the bottom up. If a node receives `p` from one side and `q` from the other side, that node is the Lowest Common Ancestor (LCA).
 
 ```cpp
 TreeNode* lowestCommonAncestor(TreeNode* root, TreeNode* p, TreeNode* q) {
-    if (root == nullptr) {
-        return nullptr;
-    }
-    if (root == p || root == q) {
+    // Base case: root is null, or root is one of the targets
+    if (root == nullptr || root == p || root == q) {
         return root;
     }
 
-    auto left = lowestCommonAncestor(root->left, p, q);
-    auto right = lowestCommonAncestor(root->right, p, q);
+    // Post-order: visit children first
+    TreeNode* left = lowestCommonAncestor(root->left, p, q);
+    TreeNode* right = lowestCommonAncestor(root->right, p, q);
 
-    // pass result upwards
+    // If both return non-null, root is the LCA
     if (left != nullptr && right != nullptr) {
         return root;
-    } else if (left != nullptr) {
-        return left;
-    } else if (right != nullptr) {
-        return right;
-    } else {
-        return nullptr;
     }
+    
+    // Otherwise, return the non-null child (propagate up)
+    return (left != nullptr) ? left : right;
 }
 ```
 
-### Binary Tree BFS Question
+### BFS: Zigzag Level Order Traversal
 
-[LeetCode Question 103: Binary Tree Zigzag Level Order Traversal](https://leetcode.com/problems/binary-tree-zigzag-level-order-traversal/).
+**Problem:** [LeetCode 103: Binary Tree Zigzag Level Order Traversal](https://leetcode.com/problems/binary-tree-zigzag-level-order-traversal/)
 
-This BFS question is kind of different, because we can do BFS with 2 `stack`s.
+We can use two stacks to simulate the zigzag motion.
+
+* **Level Even:** Pop from S1, Push children (Left then Right) to S2.
+* **Level Odd:** Pop from S2, Push children (Right then Left) to S1.
 
 ```cpp
 vector<vector<int>> zigzagLevelOrder(TreeNode* root) {
-    auto result = vector<vector<int>>();
-    auto next_s1 = stack<TreeNode*>({root});
-    auto next_s2 = stack<TreeNode*>();
-    auto l2r = true;
-    while(!next_s1.empty() || !next_s2.empty()) {
-        auto tmp = vector<int>();
-        if (l2r) {
-            while(!next_s1.empty()) {
-                auto cur = next_s1.top();
-                next_s1.pop();
-                if (cur != nullptr) {
-                    tmp.push_back(cur->val);
-                    next_s2.push(cur->left);
-                    next_s2.push(cur->right);
-                }
+    if (!root) return {};
+    
+    vector<vector<int>> result;
+    stack<TreeNode*> s1;
+    stack<TreeNode*> s2;
+    
+    s1.push(root);
+    
+    while (!s1.empty() || !s2.empty()) {
+        vector<int> level;
+        
+        // Process S1 (Left to Right)
+        if (!s1.empty()) {
+            while (!s1.empty()) {
+                TreeNode* cur = s1.top(); s1.pop();
+                level.push_back(cur->val);
+                
+                if (cur->left) s2.push(cur->left);
+                if (cur->right) s2.push(cur->right);
             }
-        } else {
-            while(!next_s2.empty()) {
-                auto cur = next_s2.top();
-                next_s2.pop();
-                if (cur != nullptr) {
-                    tmp.push_back(cur->val);
-                    next_s1.push(cur->right);
-                    next_s1.push(cur->left);
-                }
+        } 
+        // Process S2 (Right to Left)
+        else {
+            while (!s2.empty()) {
+                TreeNode* cur = s2.top(); s2.pop();
+                level.push_back(cur->val);
+                
+                // Note order: Right then Left
+                if (cur->right) s1.push(cur->right);
+                if (cur->left) s1.push(cur->left);
             }
         }
-        l2r = !l2r;
-        if (tmp.size()>0) {
-            result.push_back(tmp);
-        }
+        result.push_back(level);
     }
     return result;
 }

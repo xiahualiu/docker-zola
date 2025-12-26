@@ -1,4 +1,4 @@
-+++
+++
 title = "Precision loss detection in control systems."
 date = 2024-10-09
 draft = false
@@ -8,23 +8,21 @@ draft = false
   math = true
   math_auto_render = true
   toc = true
-	keywords = "Float, C++, Error"
+  keywords = "Float, C++, Error"
 +++
 
-This article proposes a systematic way to detect the precision loss due to runtime data storage.
+This article outlines a practical way to detect when runtime data storage starts eroding meaningful precision.
 
-## What is float point precision loss?
+## What is floating-point precision loss?
 
-Computer system uses finite bit width to represent float point numbers like `1.0` and `0.5`.
+Computers store floating-point numbers with a fixed number of bits. Values like `1.0` or `0.5` fit exactly, but irrational or long values such as $\pi$ must be rounded to the closest representable number, introducing **error due to data storage**.
 
-For float point numbers like $\pi$, there is no way to store all the precision information from this value. The software will round the number to the nearest float point number it can store and this introduces the **error caused by data storage**.
+Modern hardware typically offers two common formats:
 
-Almost all modern computer architectures now provide `float` and `double` types in their systems, and they have different precision limits:
+- A 32-bit float uses a 23-bit significand (mantissa), which gives roughly 7 decimal digits of precision.
+- A 64-bit float (`double`) uses a 52-bit significand, giving roughly 16 decimal digits of precision.
 
-- A 32-bit float-point uses 23-bit (mantissa) to store the numerator of a fractional number. This means that a float can at most store the 7 most significant digits of a value.
-- A 64-bit float-point (usually called `double`) uses 52-bit (mantissa) to store the numerator of a fractional number. This means that a float can at most store the 16 most significant digits of a value.
-
-If we want to store $\pi$ in the above types:
+If we store $\pi$ in these formats:
 
 $$float\ A=\pi$$
 $$double\ B=\pi$$
@@ -32,112 +30,62 @@ $$double\ B=\pi$$
 $$A=3.1415927+\epsilon_A$$
 $$B=3.141592653589793+\epsilon_B$$
 
-The $\epsilon_A$ and $\epsilon_B$ represent the storage error for $\pi$ respectively for `float` and `double`.
-
-However if we only store numbers like `0.5` and `1.0`, since they have fewer significant digits, these values can be stored in the system **losslessly**.
-
-We call this type of error: **Error Due to Data Storage**.
+Here, $\epsilon_A$ and $\epsilon_B$ are the storage errors. Exact values like `0.5` or `1.0` fit losslessly because their binary representation is finite.
 
 ### Storage error is proportional to the value
 
-As you can see, the data storage error depends on the data value, for example, a 32-bit float number `123456789.0` has more storage error than a 32-bit float number `1.0`. Since a float variable can change its value during runtime, this type of error tolerance can also change as well.
+Storage error grows with magnitude: a 32-bit float holding `123456789.0` has a larger absolute error than one holding `1.0`. A quick approximation for the absolute storage error when storing a value $x$ is:
 
-We can calculate the approx storage error easily:
+$$\epsilon_{float}\approx\frac{|x|}{2^{23}}$$
 
-$$\epsilon_{float}\approx\frac{x}{2^{23}}$$
+$$\epsilon_{double}\approx\frac{|x|}{2^{52}}$$
 
-$$\epsilon_{double}\approx\frac{x}{2^{52}}$$
+This reflects that each format provides a fixed number of significant bits; the error scales with the size of the value.
 
-## Data Uncertainty (Data Tolerance)
+## Data uncertainty (data tolerance)
 
-No matter what system you have, and where the input data are coming from, there will always be uncertainty in the input data. 
+All input data arrive with some uncertainty, regardless of the source.
 
-### Example: Measurement error
+### Example: measurement error
 
-Also known as sensor reading error, it comes from measurements of physical values such as distance, temperature, weight and time.
+Sensors report physical values with a stated tolerance. For instance, an NTC temperature sensor might guarantee readings within $\pm 0.1\,C$ at 99.9% confidence. Using $\epsilon_{prob}$ to denote the tolerance at a given probability:
 
-For example, an NTC temperature sensor can measure temperate within $\pm 0.1 C$ tolerance, this means that for all data from it, come with this much uncertainty.
+$$\epsilon_{0.999} < 0.1\,C$$
 
-The error tolerance of a sensor can be multiple values, usually paired with the probablity, if we use $\epsilon_{prob}$ to represent the error tolerance value:
-
-If a value from an NTC temperature sensor has 99.9% probablity within the 0.1C error tolerance, we can use:
-
-$$\epsilon_{0.999}<0.1C$$
-
-To represent the error of this sensor.
-
-Note this our notation works closely with the failure mode analysis of the system, if the control system is designed to use $\epsilon_{0.999}$ for error bound, the failure rate will be $1-0.999=0.001$.
-
-If the data come from another system, the provider system should also provide the error tolerance information for the data it provides, with no exceptions.
+If a control loop is designed around $\epsilon_{0.999}$, the implied failure rate is $1-0.999=0.001$. Any system providing data should also provide the associated tolerance information.
 
 ### Tolerance propagation
 
-Inside a given system, not matter if it is SISO or MIMO, the data uncertainty can be propagated from input to output, and we called this process **tolerance propagation**
+Within a system—whether SISO or MIMO—uncertainty propagates through every operation. For an input $x$ and operations such as
 
-If the input data value is $x$. For every arithmetic operations, such as:
+- addition/subtraction/multiplication/division: $$x+a,\ x-a,\ x\times a,\ \frac{x}{a}$$
+- trigonometric functions: $$\sin(x),\ \cos(x),\ \tan(x)$$
+- power/logarithm: $$x^a,\ \log_a(x)$$
 
-* Addition/Substraction/Multiplication/Division.
+each output carries an updated tolerance derived from the input tolerances. For a general function $y=f(x,a,b,\dots)$ with independent, approximately normal inputs, the first-order propagation is
 
-$$x+a$$
-$$x-a$$
-$$x\times a$$
-$$\frac{x}{a}$$
+$$\sigma_y^2=\left(\sigma_x\frac{\partial f}{\partial x}\right)^2+\left(\sigma_a\frac{\partial f}{\partial a}\right)^2+\left(\sigma_b\frac{\partial f}{\partial b}\right)^2+\dots$$
 
-* Trigonometric functions, such as:
+This first-order approximation is usually sufficient in practice. The same idea extends to vector-valued functions using a covariance matrix and the Jacobian.
 
-$$\sin(x)$$ 
-$$\cos(x)$$ 
-$$\tan(x)$$
+## Precision loss detection principle
 
-* Power/logarithm calculations:
+1. Track the propagated uncertainty ($\sigma$) for every intermediate result using the formulas above.
+2. Compute the storage error ($\epsilon$) after writing that result into the chosen floating-point format.
+3. Compare storage error to uncertainty. If storage error exceeds a fraction $p$ of the uncertainty, flag a precision-loss event.
 
-$$x^a$$
-$$log_a(x)$$
+Mathematically, for a result $y$:
 
-These calculated result, the output, also carries an updated error tolerance that comes with $x$, the tolerance value can propagate along with all the calculations inside the system until we pass it to another system.
+$$\text{if}\ \epsilon_y > p\,\sigma_y \text{ then precision is considered lost}$$
 
-The tolerance propagation function can be found in many statistic research paper. For function $y=f(x, a, b,\dots)$, given $x$, $a$, $b$ are all **un-correlated**, **normal-distributed** random variables (in practice, it still works well even the data variables are weakly correlated to each other.)
+Commonly $p$ is set to a small number (for example, $p=0.01$ for a 1% threshold). When triggered, downstream computations should treat the value as unreliable.
 
-$$\sigma_y^2=(\sigma_x\frac{\partial_f}{\partial_x})^2+(\sigma_a\frac{\partial_f}{\partial_a})^2+(\sigma_b\frac{\partial_f}{\partial_b})^2+...$$
+## Why care about error propagation?
 
-There are many papers you can find online, such as [Error Propagation tutorial.doc](https://foothill.edu/psme/daley/tutorials_files/10.%20Error%20Propagation.pdf) list common propagation functions for additive/substraction, etc. arithmetic operations.
-
-For most systems, using the first order approximation is practically good enough for tolerance propagation calculation.
-
-There are also co-variance matrix version for matrix version calculation, which requires us to calculate the **Jacobian matrix** instead of the scalar partial derivative function.
-
-## Precision Loss Detecton Principle
-
-Simply speaking, 
-
-* We calculated data uncertainty of all results that generated by the data processing steps, using the uncertainty propagation formulas shown as above.
-* We calculated the error introduced by storage after getting the result values.
-* We compare the storage error to the data uncertainty.
-
-If the error due to storage is higher than a certain threshold, saying $1\%$ of the data uncertainty, it triggers a precision loss event. Because we cannot guarantee the data is valid after storing it.
-
-Using the above math notation, for any calculated result $y$, if we set the threshold to be $p$, we compare:
-
-$$If\ \epsilon_y > p\sigma_y$$
-
-If it is true, we need to consider that we are having a precision loss event in our system.
-
-## Why do we need to care about error propagation
-
-### Optimize data process
-
-We want to manipulate the system data processing steps to make sure we can preserve the precision of the original data as much as possible. This indicates we should try to minimize the error tolerance of the data for a given calculation function.
-
-Aside from the time and space complexity, data preservation can also be considered as a performance index for a data processing function.
-
-### Data validity detection
-
-It provides a way for the system to validate the data in real-time, i.e. the software will automatically render the data value invalid and abort the rest calculations after it detects a precision loss event.
-
-### Measure data reliablity
-
-This is crucial for safety critical system. We can measure how reliable the output is from a given system based on the output data tolerance.
+- **Optimize data processing:** Shape algorithms to keep propagated uncertainty low, not just runtime or memory.
+- **Data validity detection:** Let software self-check results at runtime and halt or retry when precision loss is detected.
+- **Measure reliability:** In safety-critical systems, reported tolerances provide a quantitative measure of output trustworthiness.
 
 ## Conclusion
 
-It is very important for the system engineer to not ignore the tolerance propagation for the designed system. Always remember that **all data come with uncertainty**, and we want to make sure that the **error introduced by data storage is WAY LOWER than the inherent data uncertainty**.
+Every data path carries uncertainty. Keep the storage-induced error far below that inherent uncertainty; otherwise, the stored value no longer reflects the real-world signal you are trying to control.

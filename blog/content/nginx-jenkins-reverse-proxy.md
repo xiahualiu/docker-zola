@@ -1,130 +1,137 @@
 +++
-title = "Set up Jenkins and Nginx reverse proxy in docker containers."
+title = "Set up Jenkins and Nginx reverse proxy in Docker containers"
 date = 2024-04-20
 draft = false
 [taxonomies]
-  tags = ["Docker"]
+  tags = ["Docker", "Jenkins", "Nginx"]
 [extra]
   toc = true
-	keywords = "Docker, Jenkins, Nginx, Reverse Proxy, Container"
+  keywords = "Docker, Jenkins, Nginx, Reverse Proxy, CI/CD, Container"
 +++
-
-This post shows how to set up Jenkins in docker, then use the Nginx container to reverse proxy the Jenkins website.
+This post demonstrates how to set up Jenkins in a Docker container and configure an Nginx container to act as a reverse proxy for the Jenkins web interface.
 
 ## Requirements
 
-* You have configured your Nginx container and it is able to show HTTP or HTTPS content when tested on your browser. You can check my previous post [Set up Let's Encrypt (Certbot) and Nginx in Docker Containers](/blog/nginx-certbot-docker) to setup Nginx and HTTPS.
-* The Nginx container and the Jenkins container are **on the same computer**.
+- Nginx is Ready: You have configured your Nginx container and verified it can serve HTTP/HTTPS content. See my previous post Set up Let's Encrypt (Certbot) and Nginx in Docker Containers for details on setting up Nginx with SSL.
+
+- Same Host: The Nginx container and the Jenkins container must run on the same machine to communicate via a local Docker network.
 
 ## Docker Compose YAML
 
-Here is an example Docker compose file:
+Here is an example docker-compose.yml file that orchestrates both services:
 
 ```yaml
 services:
-  # Nginx service
+  # Nginx Service
   webserver:
     image: nginx:latest
     ports:
       - 80:80
       - 443:443
     volumes:
-      - ./nginx/conf/:/etc/nginx/conf.d/:ro   # Nginx conf folder
+      - ./nginx/conf/:/etc/nginx/conf.d/:ro   # Nginx config folder
       - ./nginx/log/:/var/log/nginx:rw        # Log folder
-      - ./certbot/www/:/var/www/certbot/:ro   # Certbot challenge folder (needed by certbot)
-      - ./certbot/conf/:/etc/letsencrypt/:ro  # Certbot folder (needed by certbot)
-
+      - ./certbot/www/:/var/www/certbot/:ro   # Certbot challenge folder
+      - ./certbot/conf/:/etc/letsencrypt/:ro  # Certbot SSL certificates
     networks:
-      - local-net # Not required but recommended
+      - local-net 
     depends_on:
-      - jenkins   # Need to know jenkins host for reverse proxy
-  # Jenkins service
+      - jenkins   # Ensures Jenkins starts before Nginx tries to proxy to it
+
+  # Jenkins Service
   jenkins:
     image: jenkins/jenkins:lts
-    user: root
+    user: root # Avoids permission issues with volumes (not recommended for high-security envs)
     volumes:
-      - ./jenkins/config/:/var/jenkins_home:rw # Jenkins config folder
+      - ./jenkins/config/:/var/jenkins_home:rw # Persist Jenkins data
     networks:
-      - local-net # Not required but recommended
+      - local-net
+
 networks:
-  local-net: # Not required but recommended
+  local-net: 
+    driver: bridge
 ```
 
-The `local-net` is not required, since docker's default behavior is to share a single network between different containers[^1]. By adding `local-net` we restrict that only those service on `local-net` can access each other. This makes future management easier if more containers are added later on.
+## Note on Networks
+
+While Docker Compose automatically creates a default network for all services in a file to communicate[^1], explicitly defining local-net allows for better isolation. It restricts communication so that only containers attached to local-net can talk to each other, which is useful if you add more unrelated containers to this host later.
 
 ## Nginx Host Configuration
 
-Here I assume you have already set up HTTPS for Nginx. If you want to se HTTP instead:
+The following configuration assumes you are setting up HTTPS (highly recommended).
 
-* delete the 301 redirection in the HTTP virtual host configuration.
-* copy whole HTTPS `location` to HTTP part. 
+If you must use HTTP only (not recommended), simply remove the SSL directives and the 301 redirection block, then move the location / block into the port 80 server block.
 
-Put this Nginx file at `./nginx/conf` folder, it is mounted to the `nginx` container in the `docker-compose.yml`.
+Save this file in your ./nginx/conf/ directory (e.g., as jenkins.conf):
 
-```
-# HTTP
+```nginx
+# HTTP Block - Redirect to HTTPS
 server {
     listen 80;
     listen [::]:80;
 
-    server_name <jenkins.domain.name>;
+    server_name jenkins.example.com; # Replace with your domain
 
-    # Redirect to HTTPS
     location / {
         return 301 https://$host$request_uri;
     }
 }
 
-# JENKINS HTTPS
+# HTTPS Block - Jenkins Proxy
 server {
     listen 443 ssl;
     listen [::]:443 ssl;
 
+    # Enable HTTP/2 (Requires Nginx 1.25.1+)
     http2 on;
 
-    server_name <jenkins.domain.name>;
+    server_name jenkins.example.com; # Replace with your domain
 
-    ssl_certificate <path-to-fullchain.pem>;
-    ssl_certificate_key <path-to-privkey.pem>;
+    # SSL Config
+    ssl_certificate /etc/letsencrypt/live/jenkins.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/jenkins.example.com/privkey.pem;
 
-    access_log            /var/log/nginx/jenkins.access.log;
-    error_log             /var/log/nginx/jenkins.error.log;
+    access_log /var/log/nginx/jenkins.access.log;
+    error_log  /var/log/nginx/jenkins.error.log;
 
     location / {
-        # proxy_params file
+        # Standard Proxy Headers
         proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
 
-        proxy_pass          http://jenkins:8080;
-        proxy_read_timeout  90s;
+        # Forward to the Jenkins container name on internal port 8080
+        proxy_pass http://jenkins:8080;
+        
+        # Increase timeout for long-running Jenkins operations
+        proxy_read_timeout 90s;
 
-        # Fix potential "It appears that your reverse proxy setup is broken" error.
-        proxy_redirect      http://jenkins:8080 https://<jenkins.domain.name>;
+        # Fix "It appears that your reverse proxy setup is broken" error in Jenkins
+        # This rewrites the Location headers in responses from Jenkins
+        proxy_redirect http://jenkins:8080 https://jenkins.example.com;
     }
 }
 ```
 
 ## Restart Nginx Service
 
-Once you have the `docker-compose.yml` and the `nginx` configuration files, you can then restart the service and check if Jenkins web page shows in browser.
+Once the docker-compose.yml is updated and the Nginx config file is created, restart the webserver to apply changes.
 
 ```bash
 docker compose restart webserver
 ```
 
-## Postscripts
+Open your browser and navigate to your Jenkins domain. You should see the login screen.
 
-For most user cases, it is **NOT** recommended to have Jenkins directly exposed on the public internet. Since Jenkins has been found to have a list of security vulnerabilities in the history. 
+## Postscripts: Security Warning
 
-Although Jenkins developpers can fix those security vulnerabilities swiftly, there will always be a time window for the bad actors to exploit those 0-day vulnerabilities[^2].
+For most use cases, it is NOT recommended to expose Jenkins directly to the public internet. Jenkins has a history of security vulnerabilities, and while the developers patch them swiftly, there is always a window of opportunity for malicious actors to exploit zero-day vulnerabilities[^2].
 
-Instead, Jenkins web page is usually hosted behind a VPN. Only users who can access the VPN network can visit Jenkins web page. This method provides strong protection to Jenkins, since most VPN uses very advanced encryption and authentication algorithms to block out the non authorized users.
+Best Practice: Host your Jenkins instance behind a VPN (Virtual Private Network). This ensures that only users authenticated to your private network can access the Jenkins interface.
 
-In my project's setup, my Jenkins web page is hosted behind the WireGuard VPN, you can read my post [Make Jenkins Accessible Only through WireGuard VPN](/blog/protect-jenkins) to know more about it.
+In my setup, Jenkins is accessible only through a WireGuard VPN. You can read my post Make Jenkins Accessible Only through WireGuard VPN to learn how to implement this.
 
+[^1]: Reference: Docker Compose Networking from docs.docker.com.
 
-[^1]: Reference from [Docker Compose Networking](https://docs.docker.com/compose/networking/) from [docks.docker.com](https://docs.docker.com/).
-
-[^2]: A [zero-day](https://en.wikipedia.org/wiki/Zero-day_vulnerability) (also known as a 0-day) is a vulnerability or security hole in a computer system unknown to its owners, developers or anyone capable of mitigating it.
+[^2]: A zero-day (or 0-day) is a vulnerability in a computer system that is unknown to its owners or developers, making it difficult to mitigate before an attack occurs.

@@ -1,262 +1,268 @@
 +++
-title = "Set up Let's Encrypt (Certbot) and Nginx in docker containers."
+title = "Set up Let's Encrypt (Certbot) and Nginx in Docker containers"
 date = 2024-04-18
 draft = false
 [taxonomies]
-  tags = ["Docker"]
+  tags = ["Docker", "Nginx", "DevOps"]
 [extra]
   toc = true
-	keywords = "Docker, Nginx, Certbot, Let's Encrypt"
+  keywords = "Docker, Nginx, Certbot, Let's Encrypt, SSL, HTTPS"
 +++
-
-This post shows how to get Let's Encrypt SSL certificates for your self-hosted website on the Nginx container.
+This post demonstrates how to obtain Let's Encrypt SSL certificates for your self-hosted website using Nginx and Docker containers.
 
 ## Requirements
 
-* You have ssh access to your server's command line.
-* You have at least one active domain name, and the DNS records for all domain names are set correctly.
+- **SSH Access:** You have access to your server's command line.
+- **Domain Name:** You have at least one active domain name, and the DNS records are configured correctly.
 
-For example, if you brought `google.com` TLD (Top Level Domain), you need to set up these DNS A/AAAA records on DNS providers, such as `blog.google.com`, `www.google.com`, `google.com`, `jenkins.google.com` to the correct destination IPs. This is required for certbot to issue SSL cert. If you don't have a TLD, a subdomain name is OK as well, but less secure.
+## DNS Configuration
 
-If you are using Cloudflare DNS service, make sure you have disabled the DNS Proxy - all records are shown as **DNS only - reserved IP** under the *Proxy status* column.
+If you bought a domain like example.com, you must ensure your DNS provider has A records (IPv4) or AAAA records (IPv6) pointing to your server's public IP address.
+
+You should set up records for every subdomain you intend to use, such as:
+
+- blog.example.com
+- www.example.com
+- jenkins.example.com
+
+> Note for Cloudflare Users: If you manage your DNS via Cloudflare, you must temporarily disable the DNS Proxy (the orange cloud icon). Ensure the Proxy status column shows DNS only - reserved IP.
+
+This is required because we are using the webroot verification method (HTTP-01 challenge), which requires Let's Encrypt to connect directly to your server IP, bypassing Cloudflare's proxy network.
 
 ## Writing Docker Compose
 
-The bare minimum `docker-compose.yml`:
+Create a docker-compose.yml file. This defines the interaction between the Nginx web server and the Certbot client.
 
 ```yaml
 services:
-  # Nginx service
+  # Nginx Service
   webserver:
     image: nginx:latest
     ports:
       - 80:80
       - 443:443
     volumes:
-      - ./nginx/conf/:/etc/nginx/conf.d/:ro   # Nginx conf folder
-      - ./nginx/log/:/var/log/nginx:rw        # Nginx Log folder
-      - ./certbot/www/:/var/www/certbot/:ro   # Certbot challenge folder
-      - ./certbot/conf/:/etc/letsencrypt/:ro  # Certbot output folder
-  # Lets Encrypt service
+      - ./nginx/conf/:/etc/nginx/conf.d/:ro   # Nginx configuration
+      - ./nginx/log/:/var/log/nginx:rw        # Logs
+      - ./certbot/www/:/var/www/certbot/:ro   # Certbot challenge folder (Read-only for Nginx)
+      - ./certbot/conf/:/etc/letsencrypt/:ro  # Certificates (Read-only for Nginx)
+  
+  # Certbot Service
   certbot:
     image: certbot/certbot:latest
     volumes:
-      - ./certbot/www/:/var/www/certbot/:rw   # Certbot challenge folder
-      - ./certbot/conf/:/etc/letsencrypt/:rw  # Certbot output folder
+      - ./certbot/www/:/var/www/certbot/:rw   # Certbot challenge folder (Read-write)
+      - ./certbot/conf/:/etc/letsencrypt/:rw  # Certificates (Read-write)
     depends_on:
-      - webserver # Need webserver to run
+      - webserver # Certbot runs after Nginx is up
 ```
 
 ## Testing Nginx
 
-Run `docker compose up webserver` to see if there is anything wrong with the nginx container.
+First, verify the Nginx container works.
 
-Note you cannot access the default Nginx index page yet, because the default nginx configuration files are not in the container, due to the first `./nginx/conf/:/etc/nginx/conf.d/:ro` volume mounting instruction. Since your `./nginx/conf` folder is empty, the nginx conf folder inside the container is empty as well.
-
-Let's create a simple configuration file in the `./nginx/conf` path, let's assume `./nginx/conf/app.conf`.
-
+```bash
+docker compose up -d webserver
 ```
+
+Note: You cannot access the default Nginx welcome page yet. We mounted ./nginx/conf/ to the container, overriding the default configuration. Since your local folder is likely empty, Nginx has no sites configured.
+
+Create a simple configuration file at ./nginx/conf/app.conf:
+
+```nginx
 server {
     listen 80;
     listen [::]:80;
 
-    server_name <sub.domain1> <sub.domain2> ... ;
+    server_name example.com www.example.com;
 
-    # Needed for Lets Encrypt, keep for cert renewals.
+    # Required for Let's Encrypt verification
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
     }
 
-    # Test connectivity with 404
+    # Test connectivity (Return 404 for now)
     location / {
         return 404;
     }
 }
 ```
-(Replace `<sub.domain1>`,etc. with your real domain names)
 
-Run `docker compose up webserver` or `docker compose restart webserver`. And input `http://<sub.domain1>`, `http://<sub.domain2>`, etc. in your browser to see if you received 404 error messages. (Sometimes the browser will ask if you want to proceed with accessing insecure sites. You need to choose yes, otherwise you won't be able to see 404 messages.)
+(Replace example.com with your actual domain)
 
-
-### Troubleshooting
-
-#### Firewall issues
-If you didn't see the 404 page, or it shows there is no connection to the host, this usually indicates some firewall issues. If you are using cloud providers such as Google Cloud Platform, AWS, Oracle Cloud, make sure you have enabled the `80` and `443` ports in the Virtual Network section on the control panel; also you need to enable `80` and `443` in OS, depending on the firewall application you have, it may be `iptables`:
-
-First check if `iptables` already allows 80 and 443:
-
-```bash
-sudo iptables -L INPUT -n
-```
-
-If there is no such rules **AND** the last rule is DROP/REDIRECT to PROHIBIT, you need to add 80 and 443 to the INPUT chain:
-
-```bash
-sudo iptables -I INPUT 1 -m state --state NEW -m multiport -p tcp --dports 80,443 -j ACCEPT
-sudo ip6tables -I INPUT 1 -m state --state NEW -m multiport -p tcp --dports 80,443 -j ACCEPT
-```
-
-(Remember to save it by using `iptables-save` otherwise it won't persist after reboot)
-
-Or `ufw`:
-
-Check if `ufw` has 80,443 rules:
-
-```bash
-sudo ufw status
-```
-
-If ufw is `Active`, and the default rule is `DENY`. Then check if you have 80,443 there, if not, add them by:
-
-```bash
-sudo ufw allow 80,443/tcp
-```
-
-#### DNS issues
-
-There could also be a DNS resolving issue. You can test your domain by running `dig` command. (You need to install `dig` if you don't have it)
-
-```bash
-dig <sub.domain1> # sub.domain2, etc.
-```
-
-Also, Windows PowerShell has a nice command `Resolve-DnsName` you can use to test if your DNS is correct:
-
-```bash
-Resolve-DnsName <sub.domain1> # sub.domain2, etc.
-```
-
-If the output IP addresses are not correct, you need to re-visit the DNS provider and make sure all DNS records are good. Note changes to DNS records can take up to 24 hours to synchronize across different regions.
-
-## Run Certbot
-
-After you can see the correct Nginx page, you are halfway there!
-
-The `certbot` container can issue and renew SSL certificates for your sites now. First let's do a dry run:
-
-```bash
-docker compose run --rm certbot certonly --webroot --webroot-path /var/www/certbot/ --dry-run -d <sub.domain1>,<sub.domain2>,...
-```
-
-There will be several questions popped up, such as your email address, accept TOS, etc. Answer all of them then, wait for `certbot` finish.
-
-If there are no errors, you can then remove the `--dry-run` parameter and run again:
-
-```bash
-docker compose run --rm certbot certonly --webroot --webroot-path /var/www/certbot/ --dry-run -d <sub.domain1>,<sub.domain2>,...
-```
-
-The output SSL pem files will be in `./certbot/conf/live/<sub.domain1>` folder, there will only be **ONE** set of certificates for all of your domain names. You need to change the owner of the `./certbot` folder otherwise docker cannot mount the new certbot files to the nginx container.
-
-```bash
-sudo chown -R $USER ./certbot
-```
-
-### Renew SSL certificates
-
-```bash
-docker-compose run --rm certbot renew
-```
-
-### Common Questions
-
-> Why run `cerbot` with `certonly` instead of `--nginx`?
-
-This is because the `certbot` `--nginx` actually queries and modifies the nginx configuration files, and because nginx is in another container, `certbot` has no idea where `nginx` is and will return error.
-
-Although there are other ways to work around and make `--nginx` option work, I highly recommend using `certonly` here and only getting the SSL certificates from Let's Encrypt CA. Write your own HTTPS configurations later on. This gives you better control over your sites.
-
-## Update Nginx HTTPS Configuration
-
-After `certbot` issues your domain certificates successfully, you can then update your Nginx configuration to enable HTTPS:
-
-```
-server {
-  listen 80;
-  listen [::]:80;
-
-  server_name <sub.domain1> <sub.domain2> ... ;
-
-  # Needed for Lets Encrypt, keep for cert renewals.
-  location /.well-known/acme-challenge/ {
-    root /var/www/certbot;
-  }
-
-  # Redirect to HTTPS sites
-  location / {
-    return 301 https://$host$request_uri;
-  }
-}
-
-# Example HTTPS static site conf
-server {
-  listen 443 default_server ssl;
-  listen [::]:443 default_server ssl;
-
-  http2 on;
-
-  server_name <sub.domain1>;
-
-  root /var/www/public/; # Example public folder
-  index index.html;      # Index html
-
-  ssl_certificate /etc/letsencrypt/live/<sub.domain1>/fullchain.pem;
-  ssl_certificate_key /etc/letsencrypt/live/<sub.domain1>/privkey.pem;
-
-  location / {
-    try_files $uri $uri/ =404;
-  }
-}
-
-# Example HTTPS reverse proxied site conf
-server {
-    listen 443 default_server ssl;
-    listen [::]:443 default_server ssl;
-
-    http2 on;
-
-    server_name <sub.domain2>;
-
-    ssl_certificate /etc/letsencrypt/live/<sub.domain1>/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/<sub.domain1>/privkey.pem;
-
-    location / {
-      # proxy_params
-      proxy_set_header Host $http_host;
-      proxy_set_header X-Real-IP $remote_addr;
-      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-      proxy_set_header X-Forwarded-Proto $scheme;
-      proxy_pass          http://<app-header>:<port>;
-      proxy_read_timeout  90s;
-      proxy_redirect      http://<app-header>:<port> <sub.domain2>;
-
-      allow 10.66.66.0/24; # Only allow VPN Peers to visit
-      deny all;            # Deny all other public IPs
-    }
-}
-```
-
-If you don't have the site ready yet, you can use the same `404` error code as the HTTP section and modify the `location` field later.
-
-Then restart Nginx container by:
+Restart the webserver:
 
 ```bash
 docker compose restart webserver
 ```
 
-Try accessing your site now, see if it is secure in your browser!
+Navigate to http://example.com in your browser. If you see a 404 Not Found nginx error page, congratulations! Your server is accessible.
 
-## Make it More Secure
+## Troubleshooting
 
-You can still make it better. There are many SSL hardening articles online, such as disabling unsafe ciphers, etc.
+If you do not see the 404 page, check your Firewall and DNS settings.
 
-You can test your site at [immuniweb](https://www.immuniweb.com/ssl/) to find any vulnerabilities and use corresponding Nginx configurations to eliminate them.
+1. Firewall Issues
+Ensure ports 80 (HTTP) and 443 (HTTPS) are open.
 
-You can also find my Nginx configuration [here](https://github.com/xiahualiu/docker-nginx-jenkins-zola/blob/main/nginx/conf/app.conf) for this blog site if you need any references as well.
+Cloud Providers (AWS/GCP/Azure): Check the "Security Group" or "VPC Firewall" settings in your cloud console.
 
-## Postscripts
+Linux Firewall (UFW):
 
-You should **NOT** enable Cloudflare DNS proxy for all domains during this whole process, and you should disable it as well **BEFORE** you renew your SSL certificates in the future if needed.
+```bash
+sudo ufw status
+# If active and 80/443 are missing:
+sudo ufw allow 80,443/tcp
+```
 
-You can, however, enable Cloudflare DNS proxy after you set HTTPS to enable CDN service from Cloudflare, but you need to choose the **FULL** architecture in the *SSL/TLS->Overview* tab, or you will see "too many redirects" error when open your website in browsers.
+Linux Firewall (iptables):
 
+```bash
+# Check current rules
+sudo iptables -L INPUT -n
+# If traffic is dropped, add accept rules:
+sudo iptables -I INPUT 1 -m state --state NEW -m multiport -p tcp --dports 80,443 -j ACCEPT
+```
+
+2. DNS Issues
+Use dig (Linux/Mac) or Resolve-DnsName (Windows) to verify your domain points to the correct IP.
+
+```bash
+dig example.com +short
+# Or on Windows PowerShell:
+Resolve-DnsName example.com
+```
+
+If the IP is incorrect, update your DNS records. Note that propagation can take up to 24 hours (though it is usually much faster).
+
+## Run Certbot
+Once HTTP access is confirmed, we can request certificates.
+
+1. The Dry Run
+Run a test first to ensure everything is configured correctly without hitting Let's Encrypt rate limits.
+
+```bash
+docker compose run --rm certbot certonly --webroot --webroot-path /var/www/certbot/ --dry-run -d example.com -d www.example.com
+```
+
+Follow the prompts (enter email, accept TOS). If the output says "The dry run was successful", proceed to the next step.
+
+2. The Real Request
+Remove the --dry-run flag to get your actual certificates:
+
+```bash
+docker compose run --rm certbot certonly --webroot --webroot-path /var/www/certbot/ -d example.com -d www.example.com
+```
+
+Your certificates will be saved in ./certbot/conf/live/example.com/.
+
+Permissions Note: The certificates are created by the container (often as root). You may need to change ownership to your local user to manage the files locally (though Nginx inside the container will read them fine as root).
+
+```bash
+sudo chown -R $USER ./certbot
+```
+
+## Renewing Certificates
+Let's Encrypt certificates expire every 90 days. To renew them, simply run:
+
+```bash
+docker compose run --rm certbot renew
+```
+
+## Common Questions
+Why run certbot with certonly instead of the --nginx plugin?
+
+The --nginx plugin attempts to modify Nginx configuration files automatically. Since Nginx is running in a separate container, Certbot cannot see or restart the Nginx process easily. Using certonly with webroot is the cleanest "Docker-way" to separate concerns: Certbot handles files, Nginx handles serving.
+
+## Update Nginx HTTPS Configuration
+Now that you have the certificates, update ./nginx/conf/app.conf to enable HTTPS.
+
+```nginx
+# 1. HTTP Redirect Block
+server {
+    listen 80;
+    listen [::]:80;
+
+    server_name example.com www.example.com;
+
+    # Needed for Let's Encrypt renewal
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Redirect all other traffic to HTTPS
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# 2. HTTPS Block (Static Site Example)
+server {
+    listen 443 default_server ssl;
+    listen [::]:443 default_server ssl;
+    
+    # Enable HTTP/2 (Requires Nginx version 1.25.1+)
+    http2 on;
+
+    server_name example.com;
+
+    root /var/www/public/; 
+    index index.html;
+
+    # SSL Config
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+}
+
+# 3. HTTPS Block (Reverse Proxy Example)
+# Use this if you are proxying to another app (like Node.js, Python, or Jenkins)
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    http2 on;
+
+    server_name app.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://app-container:8080; # Replace with your app service name
+        
+        # Standard Proxy Headers
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Apply the changes:
+
+```bash
+docker compose restart webserver
+```
+
+## Security & Postscripts
+Improving SSL Security
+You can further harden your SSL configuration by disabling weak ciphers or enabling HSTS.
+
+Test your configuration at Qualys SSL Labs or ImmuniWeb.
+
+Use the Mozilla SSL Configuration Generator to generate industry-standard Nginx configs.
+
+## Cloudflare Users
+Now that your SSL is working:
+
+You can re-enable the Cloudflare DNS Proxy (Orange cloud).
+
+Crucial: In Cloudflare dashboard, go to SSL/TLS -> Overview and set the encryption mode to Full (Strict).
+
+If you leave it on "Flexible", you will get infinite redirect loops because Cloudflare talks to your server via HTTP, but your server redirects back to HTTPS.
+
+Future Renewals: When it is time to renew certificates using the webroot method, you generally do not need to disable Cloudflare proxy again, provided your HTTP-to-HTTPS redirect allows the .well-known/acme-challenge path to pass through.

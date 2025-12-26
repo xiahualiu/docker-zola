@@ -1,12 +1,12 @@
 +++
-title = "Re-visit Sorting algorithms with C++."
+title = "Revisit Sorting Algorithms in C++"
 date = 2024-11-19
 draft = false
 [taxonomies]
   tags = ["C++", "Algorithm"]
 [extra]
   toc = true
-	keywords = "C++, algorithm, insert sort, bubble sort, heap sort, merge sort, quick sort"
+  keywords = "C++, algorithm, insertion sort, bubble sort, heap sort, merge sort, quick sort"
 +++
 
 All kinds of sorting algorithms, re-visited!
@@ -15,18 +15,16 @@ All kinds of sorting algorithms, re-visited!
 
 ### Bubble Sort
 
-Bubble sort is the easiest sorting algorithm, it can be considered as an inferior version of the insert sort.
+Bubble sort is the easiest sorting algorithm; it can be considered an inferior version of insertion sort.
 
-You should **never** use bubble sort in any applications. It has no advantages at all compared to the other sorting algorithms.
+You should **never** use bubble sort in real applications. It has no advantages compared to the other sorting algorithms.
 
-The basic concept is we traverse the vector and compare `[i]` and `[i-1]`, if they are not the order we want, we swap, and move on to the next pair.
-
-We need to do at most `vec.size()-1` traversals for a vector `vec`.
+The basic concept: traverse the vector and compare `[j]` and `[j-1]`; if they are out of order, swap them and continue. Each pass pushes the largest remaining element to the end, so we can shrink the inner loop range as we go.
 
 ```cpp
 void bubble_sort(vector<int>& vec) {
     for (int i = 1; i < vec.size(); i++) {
-        for (int j = 1; j < vec.size(); j++) {
+        for (int j = 1; j < vec.size() - i + 1; j++) {
             if (vec[j] < vec[j - 1]) {
                 swap(vec[j], vec[j - 1]);
             }
@@ -37,13 +35,13 @@ void bubble_sort(vector<int>& vec) {
 
 ### Bucket Sort
 
-Bucket sort is probably also the easiest sorting algorithm, and it is also very useful for it runs in `O(N)` time.
+Bucket sort is also simple and runs in `O(N)` time when the value range is bounded and small.
 
-It is optimal when the sorted value deviation is small.
+It is optimal when the sorted value deviation is small (and non-negative in this example).
 
 ```cpp
 void bucket_sort(vector<int>& vec) {
-    // If values in 0-100.
+    // If values are in [0, 99].
     auto bucket = array<int, 100>({0});
     for (auto v : vec) {
         bucket[v]++;
@@ -61,9 +59,9 @@ void bucket_sort(vector<int>& vec) {
 
 ### Insertion Sort
 
-It works really well when the sorted values are close to being fully sorted.
+Insertion sort works well when the input is already nearly sorted and is stable.
 
-It is very similiar to the bubble sort, except for every traversal, we bubble values from back to front.
+It is very similar to bubble sort, except each traversal bubbles values from back to front.
 
 ```cpp
 void insert_sort(vector<int>& vec) {
@@ -79,13 +77,13 @@ It works better than bubble sort although they have the same worst time complexi
 
 ### Shell Sort
 
-Well, slightly optimized insertion sort, the only difference is we added an additional gaps for the bubble steps.
+Shell sort is a gap-based variant of insertion sort. The gap sequence matters; this example uses a short, fixed sequence for simplicity.
 
-There are things like binary insertion sort, which is basically same as this.
+There are things like binary insertion sort, which is conceptually similar but still quadratic in the worst case.
 
 ```cpp
 void shell_sort(vector<int>& vec) {
-    auto gaps = vector<int>({4, 2, 1});
+    auto gaps = vector<int>({4, 2, 1});  // Ciura-like short sequence for demo
     for (auto gap : gaps) {
         for (auto i = 1; i < vec.size(); i++) {
             for (auto j = i; j >= gap && vec[j - gap] > vec[j]; j--) {
@@ -100,149 +98,127 @@ void shell_sort(vector<int>& vec) {
 
 ### Merge Sort
 
-Divide and conquer sort, you need to think this recursively:
+Divide and conquer sort; think recursively:
 
 * Break a vector into 2 vectors (same length).
 * Sort the 2 vectors independently so they are in order.
   * If one of the 2 vector is null, return the other vector directly.
-* Merge back the 2 pieces with 2 pointer algorithm.
+* Merge back the 2 pieces with a 2-pointer merge.
 
-A special technique used in the following C++ code is we pre-defined a `buffer` vector to store the merged results, which speeds up the sort process a lot.
-
-```cpp
-// Buffer is used as internal buffer, so we don't allocate when sorting
-void merge_sort(vector<int>& vec, vector<int>& buffer, int start_i, int end_i) {
-    if (end_i - start_i <= 1) {
-        return;
-    }
-    // Divide
-    int mid = (start_i + end_i) / 2;
-    merge_sort(vec, buffer, start_i, mid);
-    merge_sort(vec, buffer, mid, end_i);
-    // Merge
-    buffer.clear();
-    auto i = start_i;
-    auto j = mid;
-    while (true) {
-        if (i >= mid) {
-            copy(vec.begin() + j, vec.end() + end_i, buffer.end());
-            break;
-        }
-        if (j >= end_i) {
-            copy(vec.begin() + i, vec.end() + mid, buffer.end());
-            break;
-        }
-        if (vec[i] <= vec[j]) {
-            buffer.push_back(vec[i]);
-            i++;
-        } else {
-            buffer.push_back(vec[j]);
-            j++;
-        }
-    }
-    copy(buffer.begin(), buffer.end(), vec.begin() + start_i);
-}
-```
-
-#### Optimized Version
-
-I have discussed this with one of my friend and he said we could avoid copying by reciprocally switch `buffer` and `vec` between recursive calls.
-
-So this is a better version of the last C++ `merge_sort` code, without `clear()` and `copy()` at the end of each recursive call.
+A common optimization is to pre-allocate a `buffer` vector to hold merged results and avoid repeated allocations.
 
 ```cpp
-void merge_sort(vector<int>& vec, vector<int>& buf, int start, int end) {
+// buffer is reused to avoid allocations while merging [start, end)
+void merge_sort(vector<int>& vec, vector<int>& buffer, int start, int end) {
     if (end - start <= 1) {
         return;
     }
-    // Divide
-    int mid = (start + end) / 2;
-    merge_sort(buf, vec, start, mid);
-    merge_sort(buf, vec, mid, end);
-    // Merge
+    int mid = start + (end - start) / 2;
+    merge_sort(vec, buffer, start, mid);
+    merge_sort(vec, buffer, mid, end);
+
+    buffer.clear();
     auto i = start;
     auto j = mid;
-    auto offset = 0;
-    while (true) {
-        if (i >= mid) {
-            copy(vec.begin() + j, vec.begin() + end,
-                 buf.begin() + start + offset);
-            break;
-        }
-        if (j >= end) {
-            copy(vec.begin() + i, vec.begin() + mid,
-                 buf.begin() + start + offset);
-            break;
-        }
+    while (i < mid && j < end) {
         if (vec[i] <= vec[j]) {
-            buf[start + offset] = vec[i];
-            i++;
+            buffer.push_back(vec[i++]);
         } else {
-            buf[start + offset] = vec[j];
-            j++;
+            buffer.push_back(vec[j++]);
         }
-        offset++;
     }
+    copy(vec.begin() + i, vec.begin() + mid, back_inserter(buffer));
+    copy(vec.begin() + j, vec.begin() + end, back_inserter(buffer));
+    copy(buffer.begin(), buffer.end(), vec.begin() + start);
 }
 ```
 
-At the beginning you should make sure `buf` is a copy of `vec`.
+Call it like this to ensure the buffer is pre-sized once:
+
+```cpp
+vector<int> buffer;
+buffer.reserve(vec.size());
+merge_sort(vec, buffer, 0, static_cast<int>(vec.size()));
+```
+
+You can avoid clearing and copying by alternately swapping the roles of the source and destination buffers during recursion.
+
+```cpp
+// src is the current read buffer; dst is the write buffer
+void merge_sort(vector<int>& src, vector<int>& dst, int start, int end) {
+    if (end - start <= 1) {
+        return;
+    }
+    int mid = start + (end - start) / 2;
+    // Recurse with buffers swapped: src -> dst -> src ...
+    merge_sort(dst, src, start, mid);
+    merge_sort(dst, src, mid, end);
+
+    int i = start;
+    int j = mid;
+    int out = start;
+    while (i < mid && j < end) {
+        dst[out++] = (src[i] <= src[j]) ? src[i++] : src[j++];
+    }
+    copy(src.begin() + i, src.begin() + mid, dst.begin() + out);
+    copy(src.begin() + j, src.begin() + end, dst.begin() + out);
+}
+```
+
+Before calling the optimized version, ensure `dst` starts as a copy of `src` and call `merge_sort(dst, src, 0, src.size())`.
 
 ### Heap Sort
 
-Heap sort is a little different, as it is very efficient for getting min or max one by one. It is used a lot to implement things like `priority_queue` data structure.
+Heap sort is very efficient for repeatedly getting min or max. It underpins the `priority_queue` data structure.
 
 Compared to merge sort and quick sort, it has several advantages:
 
-* Heap sort requires no extra space, which makes it suitable for large data structure.
-* The heap data structure is good for inserting new value in the runtime, as well as popping the min/max value.
-* It is an upgraded version of the **insertion sort**, works really well with nearly sorted data.
+* Requires no extra space, which makes it suitable for large data structures.
+* Good for inserting new values at runtime, as well as popping the min/max value.
+* An upgraded version of the **insertion sort**, works well with nearly sorted data.
 
-However it is slower than merge sort in most cases. If all we want is sort an array, merge sort is the winner here.
+However it is slower than merge sort in most cases for pure sorting. If all we want is sort an array, merge sort often wins.
 
-After the vector is **made into a heap** in a certain order (which takes `O(N)` and its proof is hard), read the min/max value will takes `O(1)`.
+After the vector is **made into a heap** in a certain order (which takes `O(N)`), reading the min/max value takes `O(1)`.
 
-If the min/max element is popped or written over, the mantainence will only take `O(logN)` time.
+If the min/max element is popped or overwritten, the maintenance only takes `O(log N)` time.
 
-Heap sort can be described as first making a vector into a heap, then pop the first element one by one. The pop is done by swapping head and tail elements, reduce the vector size by 1, then do sink the new top element.
+Heap sort can be described as first making a vector into a heap, then popping the first element one by one. The pop is done by swapping head and tail elements, reducing the vector size by 1, then sinking the new top element.
 
 Heap itself can be seen as a **complete binary tree** data structure. The time complexity for heap sort is very stable.
 
-C++, since C++98 has `make_heap()` function, which is quite useful, and we are going to implement this `make_heap()`, `pop_heap()` function by hand.
-
 #### `make_heap()`
 
-We can define a helper function called `sink()`, it sinks a vector node to the correct location on the heap.
+We can define a helper function called `sink()`. It sinks a vector node to the correct location on the heap.
 
-Then we sink every value from the vector end to begin, as a result, creating the **maximum/minimum heap** structure.
+Then we sink every value from the vector end to the beginning, creating the **minimum heap** structure.
 
 ```cpp
-void sink(vector<int>& vec, const int n, int i) {
+void sink(vector<int>& vec, int n, int i) {
     while (true) {
-        auto min_i = i;
-        auto min_val = vec[i];
-        if (2 * i + 2 < n && vec[2 * i + 2] < min_val) {
-            min_i = 2 * i + 2;
-            min_val = vec[2 * i + 2];
+        int left = 2 * i + 1;
+        int right = 2 * i + 2;
+        int min_i = i;
+        if (left < n && vec[left] < vec[min_i]) {
+            min_i = left;
         }
-        if (2 * i + 1 < n && vec[2 * i + 1] < min_val) {
-            min_i = 2 * i + 1;
-            min_val = vec[2 * i + 1];
+        if (right < n && vec[right] < vec[min_i]) {
+            min_i = right;
         }
         if (min_i == i) {
             return;
-        } else {
-            vec[min_i] = vec[i];
-            vec[i] = min_val;
-            i = min_i;
         }
+        swap(vec[i], vec[min_i]);
+        i = min_i;
     }
 }
 
 void make_heap(vector<int>& vec) {
-    for (auto j = vec.size(); j > 0; j--) {
-        auto i = j - 1;
-        sink(vec, vec.size(), i);
+    if (vec.empty()) {
+        return;
+    }
+    for (int i = static_cast<int>(vec.size()) / 2 - 1; i >= 0; --i) {
+        sink(vec, static_cast<int>(vec.size()), i);
     }
 }
 ```
@@ -282,10 +258,12 @@ For child index at `i` we can use `(i-1)/2` to get the parent index.
 ```cpp
 void insert_heap(vector<int>& vec, int val) {
     vec.push_back(val);
-    for (auto i = vec.size()-1; i > 0;) {
-        if ((i - 1) / 2 >= 0 && vec[(i - 1) / 2] > vec[i]) {
-            swap(vec[(i - 1) / 2], vec[i]);
-            i = (i - 1) / 2;
+    size_t i = vec.size() - 1;
+    while (i > 0) {
+        size_t parent = (i - 1) / 2;
+        if (vec[parent] > vec[i]) {
+            swap(vec[parent], vec[i]);
+            i = parent;
         } else {
             break;
         }
@@ -323,12 +301,11 @@ int partition(vector<int>& vec, int low, int high) {
 }
 
 void quick_sort(vector<int>& vec, int low, int high) {
-    if (high <= low) {
+    if (low >= high) {
         return;
-    } else {
-        auto mid = partition(vec, low, high);
-        quick_sort(vec, low, mid - 1);
-        quick_sort(vec, mid + 1, high);
     }
+    int mid = partition(vec, low, high);  // Hoare partition returns a valid split point
+    quick_sort(vec, low, mid);
+    quick_sort(vec, mid + 1, high);
 }
 ```

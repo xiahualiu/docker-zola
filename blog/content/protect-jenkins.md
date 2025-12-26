@@ -1,101 +1,125 @@
-+++
-title = "Make Jenkins accessible only through WireGuard VPN."
+++
+title = "Locking Down Jenkins: Access via WireGuard VPN Only"
 date = 2024-04-19
 draft = false
 [taxonomies]
-  tags = ["Docker"]
+  tags = ["Docker", "Security", "DevOps"]
 [extra]
   toc = true
-	keywords = "Jenkins, WireGuard, VPN"
-+++
+  keywords = "Jenkins, WireGuard, VPN, Nginx, Security"
+++
 
-In the previous post [Set up Jenkins and Nginx Reverse Proxy in Docker Containers](/blog/nginx-jenkins-reverse-proxy), we successfully deployed the Jenkins controller node and reverse proxied the website page with Nginx.
+In the previous post [Set up Jenkins and Nginx Reverse Proxy in Docker Containers](/blog/nginx-jenkins-reverse-proxy), we successfully deployed a Jenkins controller and exposed it via Nginx.
 
-However, it is not ideal to directly expose your Jenkins website on the public internet, since it could be the target of someone who wants to infiltrate your system.
+However, directly exposing a CI/CD tool like Jenkins to the public internet is a security risk. It presents a large attack surface for anyone looking to infiltrate your build pipeline.
 
-Instead, the Jenkins website is usually protected by some VPN, which makes it only accessible to those "authorized users".
-
-In this post I will show you how to use the popular VPN, [WireGuard VPN](https://www.wireguard.com/) to protect your Jenkins website.
+The industry standard solution is to hide Jenkins behind a VPN, making it accessible only to authorized users on a private network. In this post, I will show you how to use [WireGuard VPN](https://www.wireguard.com/)—a modern, fast, and secure VPN protocol—to lock down your Jenkins instance.
 
 ## Requirements
 
-* You have Jenkins.
-* You have Nginx.
-* You have configured Nginx to reverse proxy Jenkins web page.
+- A server running Jenkins and Nginx (as set up in the previous post).
+- Root/Sudo access to the server.
+- A client machine (your laptop/desktop).
 
-## Install WireGuard VPN
+## Step 1: Install WireGuard
 
-Install WireGuard VPN is fairly easy on most modern Linux distributions, you can check the detailed [official install document](https://www.wireguard.com/install/) for more information.
+Installing WireGuard is straightforward on most modern Linux distributions. Refer to the [official install documentation](https://www.wireguard.com/install/) for OS-specific commands.
 
-Although there is a container version of WireGuard, I **DON'T** recommend using it, because WireGuard VPN relies on the Linux kernel module to function safely, and in docker containers WireGuard cannot access the bare metal OS.
+**A note on Docker:**
+You can run WireGuard inside a container, but it requires privileged access or host kernel access and is more complex. Installing WireGuard on the host is simpler and more performant.
 
-## Writing WireGuard Server & Client Configuration files
+## Step 2: Configure the WireGuard Server
 
-The example configuration files can be found in my repository: 
+We will create a private network where the server is `10.66.66.1` and your client is `10.66.66.2`.
 
-* Example Server Configuration: [wg0.conf](https://github.com/xiahualiu/docker-nginx-jenkins-zola/blob/main/wireguard/wg0.conf)
-* Example Client Configuration: [wg0_client.conf](https://github.com/xiahualiu/docker-nginx-jenkins-zola/blob/main/wireguard/wg0_client.conf)
+### Generate keys
 
-Note that in the example configuration files, the WireGuard subnet (CIDR) is `10.66.66.0/24`, and server used `10.66.66.1`, the client used `10.66.66.2`. These values are not specific, you can change them to any value you want, however this post will use these values later on for demonstration purposes.
-
-Also the server configuration used the default WireGuard VPN port `51820`.
-
-### Generate Keys
-
-Use this one line command to generate a single key pair:
+WireGuard uses public-key cryptography. Generate a key pair for the server and another for the client:
 
 ```bash
 wg genkey | tee privatekey | wg pubkey > publickey
 ```
 
-This command creates 2 new files named `privatekey` and `publickey`, you can use `cat` to print the key content.
+Save the generated `privatekey` and `publickey` for each peer.
 
-You will need to generate 2 key pairs, one for your server and one for your client. This means you will have 2 public keys and 2 private keys in total.
+### Server configuration (create `/etc/wireguard/wg0.conf`)
 
-After generating the 2 key pairs, you can then fill out the `<Server-Private-Key>`, etc fields in the `wg0.conf` and `wg0-client.conf`.
+```ini
+[Interface]
+Address = 10.66.66.1/24
+ListenPort = 51820
+PrivateKey = <INSERT SERVER PRIVATE KEY HERE>
 
-### WireGuard Client
-
-For client connection, you need to copy and paste the `wg0-client.conf` content to your WireGuard client software.
-
-Note that in the client configuration file, the `AllowedIPs`, meaning which network traffic should be sent to the VPN tunnel, **should be the `wg0` IP address of the server**. In our case, it is `10.66.66.1`.
-
-Why it is `10.66.66.1` instead of the public IP address? You will know it later, let's move onto the next step.
-
-## Change the DNS record
-
-Now we need to move on changing the DNS record for our Jenkins site, instead of pointing `jenkins.domain.name` to the server's public IP address, we modify it, so that it points to the internal `wg0` interface IP address. 
-
-After that this will happen:
-
-* When a user **without** the WireGuard VPN tries to visit the site `jenkins.domain.name`. Because this domain name is resolved to a LAN address `wg0`, he will not be able to access the website.
-* When a user **with** the WireGuard VPN visits the site, the WireGuard VPN software on his machine tunnels the network packet (set by `AllowedIPs` field in the client configuration) to the server `wg0` interface. The request will then reach Nginx and eventually Jenkins. 
-
-This allows us to block the non-authorized users out in our system to some content, but the user still can access the site if he overrides the host setting of `jenkins.domain.name` on his machine.
-
-To solve the above issue, next we are going to enable the IP filter function on Nginx, so that Nginx only allows requests from WireGuard VPN IP addresses.
-
-## Enable the IP filter on Nginx
-
-Go to your Nginx configuration file and add these 2 lines:
-
+# Client Peer
+[Peer]
+PublicKey = <INSERT CLIENT PUBLIC KEY HERE>
+AllowedIPs = 10.66.66.2/32
 ```
+
+Start the interface and enable it on boot:
+
+```bash
+sudo wg-quick up wg0
+sudo systemctl enable wg-quick@wg0
+```
+
+## Step 3: Configure the Client
+
+Install the WireGuard client on your laptop/desktop and create a configuration file like this:
+
+```ini
+[Interface]
+Address = 10.66.66.2/24
+PrivateKey = <INSERT CLIENT PRIVATE KEY HERE>
+
+[Peer]
+PublicKey = <INSERT SERVER PUBLIC KEY HERE>
+Endpoint = <YOUR_SERVER_PUBLIC_IP>:51820
+AllowedIPs = 10.66.66.1/32
+PersistentKeepalive = 25
+```
+
+Activate the connection in your client. You should then be able to ping `10.66.66.1`.
+
+> Note: Setting `AllowedIPs` to the server's VPN IP implements split-tunneling for just that destination. Adjust `AllowedIPs` if you want to route more traffic through the tunnel.
+
+## Step 4: Update DNS Records
+
+If you control DNS for `jenkins.example.com`, you can point the hostname to the VPN IP so that clients using the VPN resolve the name to the private address. How you do this depends on your DNS setup — some teams use internal DNS or split-horizon DNS to avoid exposing private addresses to the public internet.
+
+In a simple setup, you would change the A record for the Jenkins subdomain to `10.66.66.1` at your DNS provider. Be careful: publishing private IPs in public DNS may have unintended consequences; prefer split DNS when possible.
+
+When a client on the VPN looks up the hostname and gets `10.66.66.1`, the WireGuard client will route traffic for that IP through the tunnel to the server.
+
+## Step 5: Enforce IP Filtering in Nginx
+
+DNS changes are convenient but not a hard barrier. To enforce that only VPN traffic reaches Jenkins, configure Nginx to accept requests only from the WireGuard subnet.
+
+Edit your site's Nginx configuration (for example in `sites-available`) and add `allow`/`deny` rules:
+
+```nginx
 location / {
-  # ...
-  allow 10.66.66.0/24; # Only allow Wireguard Peers to visit
-	deny all;            # Deny all other IPs
-  # ...
+  # ... existing proxy settings ...
+
+  allow 10.66.66.0/24;  # Allow anyone on the WireGuard subnet
+  deny all;             # Reject everyone else
 }
 ```
 
-Then restart Nginx container `docker compose restart webserver`, to apply the new configurations.
+Restart the webserver container to apply the change:
 
-Now the Nginx only serves Jenkins to whose IP address belongs to the `10.66.66.0\24` CIDR and returns `403` to those who doesn't. And since users on the WireGuard VPN has a source IP address that belongs to `10.66.66.0\24`, their access won't be interrupted.
+```bash
+docker compose restart webserver
+```
 
-This IP filtering mechanism eliminates the chance that someone can visit your Jenkins site with modified host file.
+## Summary
 
-## Postscripts
+You have created a secure, private tunnel for your CI/CD operations:
 
-Note that there is still a very slim chance that the attacker can pretend he is on the WireGuard VPN subnet even after all those settings, to eliminate this possiblity you can add a firewall rule to the `eth0` or similar public network interface, and blocking all IP addresses from `eth0`.
+- WireGuard provides a private network (`10.66.66.0/24`).
+- DNS can point your Jenkins hostname to the private address for VPN clients.
+- Nginx restricts access to requests originating from the WireGuard subnet.
 
-Because WireGuard VPN uses the tunneled connection over the `51820` port, this rule will not disrupt the WireGuard VPN connection.
+## Hardening tips
+
+For additional protection, block ports `80`/`443` on the server's public interface (for example with `ufw` or `iptables`) and allow them only on the WireGuard interface (`wg0`). This ensures traffic never reaches Nginx unless it originates from the VPN.

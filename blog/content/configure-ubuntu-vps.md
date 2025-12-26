@@ -1,51 +1,204 @@
 +++
-title = "Ubuntu 24.04 LTS cloud server quick configuration."
+title = "Ubuntu 24.04 LTS Cloud Server Quick Configuration"
 date = 2024-09-28
 draft = false
 [taxonomies]
-  tags = ["Linux"]
+  tags = ["Linux", "Ubuntu", "Server"]
 [extra]
   toc = true
-	keywords = "Linux, VPS"
+  keywords = "Linux, Ubuntu, Configuration"
 +++
 
-This is a personal note post to remind me the steps for basic cloud server configuration on Ubuntu 24.04 LTS.
+This is a personal reference note for configuring a fresh cloud server instance running **Ubuntu 24.04 LTS** (Noble Numbat). It covers essential system updates, storage mounting, network hardening, and security best practices.
 
-## Update all packages & Linux kernel
+## System & Kernel Configuration
 
-The first thing to do is always updating everything, including the Linux kernel.
+### Choose GA or HWE Kernel Track
+Ubuntu LTS offers two main kernel tracks. Choosing the right one depends on your stability needs versus your hardware requirements.
+
+* **GA (General Availability)**: The standard, most stable kernel (e.g., Linux 6.8). It is supported for the full lifespan of the LTS release without major version jumps. Best for: Critical production servers where stability is paramount.
+
+* **HWE (Hardware Enablement)**: Newer kernels ported from interim Ubuntu releases. It updates roughly every 6 months. Best for: Servers needing support for the very latest hardware (e.g., newest GPUs, NVMe drives, or network cards).
+
+#### Check your current kernel:
 
 ```bash
-sudo apt update
-sudo apt upgrade
+uname -r
+```
+
+#### To install the HWE (Newer) Kernel:
+
+```bash
+sudo apt install --install-recommends linux-generic-hwe-24.04
+```
+
+#### To install the GA (Stable) Kernel:
+
+```bash
+sudo apt install --install-recommends linux-generic
+```
+
+#### Clean Up Old Kernels
+
+After rebooting into the new kernel, it is good practice to remove the old, unused kernel images to save disk space and keep the boot menu clean.
+
+1. **Verify you are running the new kernel** Before removing anything, confirm you have successfully booted into the target kernel.
+
+```bash
+uname -r
+```
+
+2. **Configure GRUB default (Optional)** If the system didn't boot the new kernel automatically, check your GRUB config.
+
+```bash
+sudo vim /etc/default/grub
+```
+
+Ensure `GRUB_DEFAULT=0` (or saved if you prefer). If you changed it, update grub and reboot again.
+
+```bash
+sudo update-grub
+```
+
+3. **List installed kernel packages** Check which kernels are currently installed on your system.
+
+```bash
+apt list --installed "linux-*"
+```
+
+4. **Remove unused kernel packages** Ubuntu has a built-in safety mechanism in `apt autoremove` that keeps the current kernel and one previous version (as a fallback). To clean up everything else:
+
+```bash
+sudo apt autoremove --purge
+```
+
+## Storage Configuration (Fstab & RAID)
+
+If you have attached block storage or need to mount a RAID array, handle this before configuring services.
+
+### RAID Assembly (mdadm)
+
+If your server uses software RAID, install `mdadm` and verify the array assembly.
+
+```bash
+sudo apt install mdadm
+sudo mdadm --assemble --scan
+```
+
+#### Filesystem Mounting (fstab)
+
+Always use UUIDs instead of device names (e.g., `/dev/vdb`) as device names can change between reboots.
+
+1. Find the UUID of your disk:
+
+```bash
+lsblk -f
+# Copy the UUID string (e.g., 1234-ABCD-...)
+```
+
+2. Edit the filesystem table:
+
+```bash
+sudo vim /etc/fstab
+```
+
+3. Add your entry at the bottom:
+
+```
+# Format: UUID=<uuid> <mount_point> <fstype> <options> <dump> <pass>
+UUID=550e8400-e29b-41d4-a716-446655440000 /mnt/data ext4 defaults,noatime 0 2
+```
+
+4. Test the mount (to prevent boot failures):
+
+```bash
+sudo mount -a
+```
+
+#### Ext4 Mounting Flags (Performance Tuning)
+
+For specific high-throughput scenarios (like build servers or temporary caches), you may want to trade some data safety for raw performance by relaxing the Ext4 journaling guarantees.
+
+* `data=writeback`: Metadata is journaled, but data is not. (Fastest, but risks stale data on crash).
+* `barrier=0`: Disables write barriers. (Improves write throughput, risks filesystem corruption on power loss).
+* `commit=60`: Syncs metadata every 60 seconds instead of the default 5.
+
+1. **Enable Writeback Mode on the Device** Before you can mount with `data=writeback`, you must enable the feature flag on the filesystem itself using `tune2fs`
+
+```bash
+# Replace /dev/sdX with your device
+sudo tune2fs -o journal_data_writeback /dev/sdX
+```
+
+2. **Update Fstab** Add the flags to your mount options in `/etc/fstab`:
+
+```
+UUID=... /mnt/data ext4 defaults,noatime,data=writeback,barrier=0,commit=60 0 2
+```
+
+3. **(Required) For Root Filesystem** If you are applying this to the root (`/`) partition, `fstab` might be processed too late in the boot chain. You must pass these as kernel flags via GRUB.
+
+Edit `/etc/default/grub`:
+
+```
+GRUB_CMDLINE_LINUX_DEFAULT="... rootflags=data=writeback,barrier=0,commit=60"
+```
+
+Update GRUB and reboot:
+
+```bash
+sudo update-grub
 sudo reboot
 ```
 
-## New User Configuration
+### Verify Filesystem Flags
 
-If there is only a `root` user, you need to add a non-root sudo user for security reasons:
+After rebooting, it is crucial to verify that your performance flags were actually applied.
+
+* **Check Active Mount Options**: Use `/proc/mounts` (which shows the kernel's view of mounts) rather than mount (which sometimes shows `/etc/mtab`):
 
 ```bash
-adduser <newuser> sudo
-su <newuser>
+cat /proc/mounts | grep ext4
+```
+
+* **Check Superblock Features**: To verify if the `journal_data_writeback` feature is enabled on the device permanently:
+
+```bash
+sudo tune2fs -l /dev/sdX | grep "Default mount options"
+```
+
+## User & Access Management
+
+Avoid using the `root` user for daily tasks. Create a privileged user with `sudo` access.
+
+```bash
+# Create user and add to sudo group
+sudo adduser <newuser>
+sudo usermod -aG sudo <newuser>
+
+# Switch to the new user
+su - <newuser>
 ```
 
 ## Network Configuration
 
-First make sure `networkd` is running.
+Ubuntu 24.04 relies heavily on `systemd-networkd` and Netplan.
+
+### Netplan Setup
+
+First, verify that `networkd` is the active backend.
 
 ```bash
 sudo systemctl restart systemd-networkd.service
 ```
 
-Then go to `/etc/netplan` and check if there is existing configuration yaml file, you need to create one if not.
-
+Check `/etc/netplan/` for existing configurations. If none exist, create a new one:
 
 ```bash
-sudo vim default.yaml
+sudo vim /etc/netplan/default.yaml
 ```
 
-The yaml content:
+YAML Configuration: *Note: YAML is strict about indentation (use 2 spaces).*
 
 ```yaml
 network:
@@ -60,9 +213,9 @@ network:
         - <server_ipv6>/64
       routes:
         - to: default
-          via: <setver_gateway_ipv4>
+          via: <server_gateway_ipv4>
         - to: default
-          via: <setver_gateway_ipv6>
+          via: <server_gateway_ipv6>
       nameservers:
         addresses:
           - 1.1.1.1
@@ -71,151 +224,146 @@ network:
           - 2606:4700:4700::1001
 ```
 
-You don't need `addresses` and `routes` if your provider supports `dhcp4: yes` or `dhcp6: yes`.
+> Tip: If your cloud provider supports DHCP, you can simply set dhcp4: yes and remove the addresses and routes sections.
 
-### Enable `DNSSEC` and `DNSOverTLS`
+Apply the settings:
+
+```bash
+sudo netplan try
+sudo netplan apply
+```
+
+### DNS Security (DNSSEC & DNSOverTLS)
+
+Enhance DNS privacy by enabling TLS.
 
 ```bash
 sudo vim /etc/systemd/resolved.conf
 ```
 
-Enable:
+Uncomment or add:
 
-```conf
+```toml
+[Resolve]
 DNSSEC=yes
 DNSOverTLS=yes
 ```
 
-And restart 
+Restart the resolver:
 
 ```bash
 sudo systemctl restart systemd-resolved.service
 ```
 
-## SSH Configuration
+## Security Hardening
 
-### Add SSH public key
+### SSH Configuration
 
-Copy and paste the public key to server:
+Ubuntu 22.10+ and 24.04 utilize socket-based activation for SSH. This requires a two-step configuration to change ports.
 
-```bash
-mkdir ~/.ssh/
-vim ~/.ssh/authorized_keys # Paste public key
-sudo chmod 400 ~/.ssh/authorized_keys
-```
-
-### Configure `ssh` Server
+#### Add SSH Public Key
 
 ```bash
-sudo systemctl edit ssh.service
+mkdir -p ~/.ssh/
+vim ~/.ssh/authorized_keys # Paste your public key here
+chmod 600 ~/.ssh/authorized_keys
+chmod 700 ~/.ssh
 ```
 
-* Listen on un-conventional SSH port (instead of 22).
-* Disable root login.
-* Disable passwod authentication.
+#### Configure `sshd_config`
 
-```conf
-Port <newport> # Setting is not used after 22.10
+Edit the main service file to restrict authentication methods.
+
+```bash
+sudo vim /etc/ssh/sshd_config
+```
+
+```
 PermitRootLogin no
 PasswordAuthentication no
+# Port settings here are ignored by systemd socket activation
 ```
 
-#### Configure `ssh.socket`
+#### Change SSH Port (Socket Override)
 
-Because Ubuntu 22.10 and later uses [socket-based activation](https://discourse.ubuntu.com/t/sshd-now-uses-socket-based-activation-ubuntu-22-10-and-later/30189).
+To change the listening port, you must edit the socket definition, not just `sshd_config`.
 
 ```bash
 sudo systemctl edit ssh.socket
 ```
 
-Insert the following lines **ABOVE** the comment lines.
+Add the following lines **above** the commented section to clear the default listener and add your own:
 
-```
+```toml
 [Socket]
 ListenStream=
-ListenStream=<new-port>
+ListenStream=<new_port>
 ```
 
-To the override configuration file. Then,
+Reload and restart:
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl restart ssh.socket ssh.serivce
+sudo systemctl restart ssh.socket
 ```
 
-### Update SSH client configuration
+#### Update Client Config
 
-After you have changed the server settings, make sure to update the settings on the client side:
+On your **local machine**, update your `~/.ssh/config` to match:
 
-```bash
-vim ~/.ssh/config
+```
+Host myserver
+    HostName <server_ip>
+    User <username>
+    Port <new_port>
+    IdentityFile ~/.ssh/id_ed25519
 ```
 
-An example ssh client config file:
+### Nftables Firewall
 
-```conf
-Host <my_server_name>
-    HostName <ip1>, <ip2>, <ip3>, ...
-    User <user_name>
-    Port <ssh_port>
-    IdentityFile ~/.ssh/id_<keyfile>
-```
+We will replace `iptables` and `ufw` with the modern `nftables`.
 
-### Restart and test new SSH settings
-
-You want to restart and test the new SSH settings before moving on.
-
-```bash
-sudo systemctl restart ssh
-```
-
-On the client side:
-
-```bash
-ssh <my_server_name>
-```
-
-Make sure client can login without any problems. Go back if it doesn't work.
-
-## Update `nftables`
-
-First remove `iptables` and `ufw`, we are going to use `nftables` only.
+#### Install & Clean up:
 
 ```bash
 sudo apt install -y nftables
 sudo apt autoremove -y iptables ufw
 ```
 
-### Add basic nft rules
-
-Edit `/etc/nftables.conf`.
+#### Configure Rules:
 
 ```bash
 sudo vim /etc/nftables.conf
 ```
 
-```conf
+```
 #!/usr/sbin/nft -f
 
 flush ruleset
+
 table inet filter {
     chain input {
         type filter hook input priority filter; policy drop;
-        # SSH port.
-        tcp dport <ssh_port> accept
-	# DHCPv6 port & icmpv6
-	udp dport 546 accept
-	ip protocol icmp accept
-	ip6 nexthdr icmpv6 accept
-        # Allow established and related packets.
-        ct state vmap { established : accept, related : accept, invalid : drop }
-        # Allow loopback.
+
+        # Allow loopback (localhost)
         iifname lo accept
+
+        # Allow established/related connections (crucial for responses)
+        ct state vmap { established : accept, related : accept, invalid : drop }
+
+        # Allow SSH (Ensure this matches your new port!)
+        tcp dport <new_port> accept
+
+        # ICMP & IPv6 essentials
+        ip protocol icmp accept
+        ip6 nexthdr icmpv6 accept
+
+        # DHCPv6 (required for some IPv6 cloud inits)
+        udp dport 546 accept
     }
 
     chain forward {
         type filter hook forward priority filter; policy drop;
-        # Default policy drop, it is not a router.
     }
 
     chain output {
@@ -224,33 +372,40 @@ table inet filter {
 }
 ```
 
-Make sure the `<ssh_port>` is correct or you will lose the active SSH session immediately after `nftables` restarts.
+#### Apply & Enable:
+
+> Caution: Ensure you have console access in case you lock yourself out.
 
 ```bash
 sudo systemctl restart nftables.service
-```
-
-If it works and you didn't lose the connection, enable it in systemd. Otherwise, reboot to undo the changes.
-
-```bash
 sudo systemctl enable nftables.service
 ```
 
-## (Optional) Install and configure `fail2ban`
+### Fail2Ban
 
-This step is optional, but adds more security to our server.
+Optional but recommended for brute-force protection.
 
 ```bash
-sudo apt update && sudo apt install -y fail2ban
+sudo apt install -y fail2ban
 ```
 
-The configuration is simple:
+Configure a local jail override:
 
 ```bash
 sudo vim /etc/fail2ban/jail.d/defaults-debian.conf
 ```
 
-Make sure you have installed `nftables` and uninstalled `iptables`, `ufw`, etc. before installing the `fail2ban` package. It will automatically use `nftables` as ban actions. 
+Ensure the `backend` is set to systemd and `banaction` utilizes nftables:
+
+```toml
+[sshd]
+enabled = true
+port = <new_port>
+backend = systemd
+banaction = nftables-multiport
+```
+
+Restart the service:
 
 ```bash
 sudo systemctl restart fail2ban.service

@@ -6,14 +6,14 @@ draft = false
   tags = ["LeetCode", "C++", "Algorithm", "Linked List"]
 [extra]
   toc = true
-	keywords = "LeetCode, C++, Algorithm, Linked List"
+  keywords = "LeetCode, C++, Algorithm, Linked List"
 +++
 
-After solved around 20 questions on leetcode about linked list, I think it is time to summarize everything I learned so far:
+After solving around 20 LeetCode linked-list problems, here is a concise summary of patterns and templates.
 
 ## Type Definition
 
-It is usually defined as:
+The standard singly linked list definition used by LeetCode is:
 
 ```cpp
 struct ListNode {
@@ -22,227 +22,160 @@ struct ListNode {
     ListNode() : val(0), next(nullptr) {}
     ListNode(int _val) : val(_val), next(nullptr) {}
     ListNode(int _val, ListNode* _next) : val(_val), next(_next) {}
-}
+};
 ```
 
 ## Linked List Traversal
 
-It is important to know whether you want to traverse a linked list in pre order or post order.
+Unlike arrays, you cannot access random elements in a linked list. You must traverse it sequentially. The direction of processing determines the logic.
 
-### Pre-Order Traversal
+### 1. Forward Traversal (Pre-Order)
 
-#### Iterative style
+We process the current node before moving to the next.
 
-The logic is very simple:
+**Iterative style** (most common):
 
 ```cpp
 for (auto p = head; p != nullptr; p = p->next) {
-  // Do something to p.
+    // Process p
 }
 ```
 
-If we need to visit 2 nodes at once (like manipulating the link), use `prev` pointer to store the last visited node.
+If you need to manipulate links (delete a node or reverse a link), keep track of the previous node:
 
 ```cpp
 ListNode* prev = nullptr;
 for (auto p = head; p != nullptr; p = p->next) {
-  // Do something to prev, p.
-  prev = p;
+    // Process prev and p
+    prev = p;
 }
 ```
 
-#### Recursive style
+**Recursive style:** performing action before the recursive call:
 
 ```cpp
-void do_something(ListNode* cur) {
-    if (cur == nullptr) {
-        return;
-    } else {
-        // Do something to cur
-        do_something(cur->next);
-    }
+void traverse(ListNode* cur) {
+    if (!cur) return;
+    // Process cur
+    cout << cur->val << endl;
+    traverse(cur->next);
 }
 ```
 
-If 2 nodes are needed inside a loop:
+If you need the `prev` pointer in recursion, pass it as an argument:
 
 ```cpp
-void do_something(ListNode* prev, ListNode* cur) {
-    if (cur == nullptr) {
-        // Do something at the end
-        return;
-    } else {
-        // Do something to prev, cur
-        do_something(cur, cur->next);
-    }
+void traverse(ListNode* prev, ListNode* cur) {
+    if (!cur) return;
+    // Process prev and cur
+    traverse(cur, cur->next);
 }
 
-do_something(nullptr, head);
+// Initial call
+// traverse(nullptr, head);
 ```
 
-### Post-Order Traversal
+### 2. Backward Traversal (Post-Order)
 
-This type of traversal is only viable through either a `stack` or recursive functions.
+Process nodes in reverse order (tail → head). Use a stack or recursion.
 
-We process the end node first, and go back to the head node one by one.
-
-#### Iterative style
-
-In order to interatively do the post-order traversal, a `stack` is needed at the beginning.
+**Iterative (using stack)** — uses O(N) extra space:
 
 ```cpp
-auto next = stack<ListNode*>();
-// First push all nodes to a stack
-for (auto p = head; p != nullptr; p = p->next) {
-    next.push(p);
-}
-// Pop one by one
-while (!next.empty()) {
-    auto p = next.top();
-    next.pop();
-    // Do something to p
+stack<ListNode*> st;
+for (auto p = head; p != nullptr; p = p->next) st.push(p);
+while (!st.empty()) {
+    ListNode* cur = st.top(); st.pop();
+    // Process cur (Tail -> Head)
 }
 ```
 
-If 2 node is needed, you can push a `nullptr` at the bottom, and check if `nullptr` is at the top during the loop:
+**Recursive (post-order):** perform action after the recursive call returns:
 
 ```cpp
-auto next = stack<ListNode*>({nullptr});
-// First push all nodes to a stack
-for (auto p = head; p != nullptr; p = p->next) {
-    next.push(p);
-}
-// Pop one by one
-while (next.top() != nullptr) {
-    auto p = next.top();
-    next.pop();
-    // Do something to p and next.top()
+void traverse(ListNode* cur) {
+    if (!cur) return;
+    traverse(cur->next);
+    // Process cur as recursion unwinds
+    cout << cur->val << endl;
 }
 ```
 
-#### Recursive style
+## Example: Reverse Linked List (LeetCode 206)
 
-You can also do the post order traversal in the recursive style:
+Several common methods to reverse a singly linked list.
 
-```cpp
-void do_something(ListNode* cur) {
-    if (cur == nullptr) {
-        return;
-    } else {
-        do_something(cur->next);
-        // Do something to cur
-    }
-}
-```
-
-Notice the difference between the pre and post order traversal because they are very similar here.
-
-For post-order traversal, we first call the recursive function, then do something to the current node.
-
-2-node post-order traversal:
+**Method 1 — Iterative (forward logic):**
 
 ```cpp
-void do_something(ListNode* prev, ListNode* cur) {
-    if (cur == nullptr) {
-        return;
-    } else {
-        do_something(cur, cur->next);
-        // Do something to cur, cur->next
-    }
-}
-
-do_something(nullptr, head);
-```
-
-## Example
-
-A good example to use all of above things we dicussed is [LeetCode question 206: Reverse Linked List](https://leetcode.com/problems/reverse-linked-list/).
-
-### Pre-Order Traversal Solution
-
-Because we need to visit 2 nodes at once:
-
-#### Iterative style
-
-```cpp
-ListNode* reverse_linked_list_pre_iter(ListNode* head) {
+ListNode* reverseList(ListNode* head) {
     ListNode* prev = nullptr;
-    for (auto p = head; p != nullptr;) {
-        auto next_tmp = p->next;
-        p->next = prev;
-        prev = p;
-        p = next_tmp;
+    ListNode* cur = head;
+    while (cur != nullptr) {
+        ListNode* nextTemp = cur->next; // Save next
+        cur->next = prev;               // Reverse link
+        prev = cur;                     // Move prev
+        cur = nextTemp;                 // Move cur
     }
-    return prev;
-}
-
-ListNode* reverse_linked_list(ListNode* head) {
-    return reverse_linked_list_pre_iter(head);
+    return prev; // New head
 }
 ```
 
-#### Recursive style
+**Method 2 — Recursive (tail recursion / forward logic):**
 
 ```cpp
-ListNode* reverse_linked_list_pre_recur(ListNode* prev, ListNode* cur) {
-    if (cur == nullptr) {
-        return prev;
-    } else {
-        auto next_tmp = cur->next;
-        cur->next = prev;
-        return reverse_linked_list_pre_recur(cur, next_tmp);
-    }
+ListNode* reverseRecur(ListNode* prev, ListNode* cur) {
+    if (!cur) return prev;
+    ListNode* nextTemp = cur->next;
+    cur->next = prev;
+    return reverseRecur(cur, nextTemp);
 }
 
-ListNode* reverse_linked_list(ListNode* head) {
-    return reverse_linked_list_pre_recur(nullptr, head);
+ListNode* reverseList(ListNode* head) {
+    return reverseRecur(nullptr, head);
 }
 ```
 
-### Post-Order Traversal Solution
-
-#### Iterative style
+**Method 3 — Recursive (standard post-order):**
 
 ```cpp
-ListNode* reverse_linked_list_post_iter(ListNode* head) {
-    auto next = stack<ListNode*>({nullptr});
-    for (auto p = head; p != nullptr; p = p->next) {
-        next.push(p);
-    }
-    auto new_head = next.top();
-    while (next.top() != nullptr) {
-        auto cur = next.top();
-        next.pop();
-        auto prev = next.top();
-        cur->next = prev;
-    }
-    return new_head;
-}
-
-ListNode* reverse_linked_list(ListNode* head) {
-    return reverse_linked_list_post_iter(head);
+ListNode* reverseList(ListNode* head) {
+    if (head == nullptr || head->next == nullptr) return head;
+    ListNode* newHead = reverseList(head->next);
+    head->next->next = head;
+    head->next = nullptr;
+    return newHead;
 }
 ```
 
-#### Recursive style
+## Important Patterns
+
+### 1. Dummy Node
+
+When modifying list structure (insert/delete/merge), the head may change. Use a **dummy node** to simplify edge cases:
 
 ```cpp
-void reverse_linked_list_post_recur(ListNode* prev, ListNode* cur, ListNode*& result) {
-    if (cur == nullptr) {
-        result = prev;
-    } else {
-        reverse_linked_list_post_recur(cur, cur->next, result);
-        cur->next = prev;
+ListNode* dummy = new ListNode(0);
+dummy->next = head;
+ListNode* cur = dummy;
+// ... perform operations using cur ...
+return dummy->next; // Actual head
+```
+
+### 2. Fast & Slow Pointers (Tortoise & Hare)
+
+Useful for detecting cycles and finding the middle of the list. **Slow** moves 1 step; **Fast** moves 2 steps.
+
+```cpp
+ListNode* slow = head;
+ListNode* fast = head;
+while (fast != nullptr && fast->next != nullptr) {
+    slow = slow->next;
+    fast = fast->next->next;
+    if (slow == fast) {
+        // Cycle detected
+        break;
     }
 }
-
-ListNode* reverse_linked_list(ListNode* head) {
-    ListNode* result = nullptr;
-    reverse_linked_list_post_recur(nullptr, head, result);
-    return result;
-}
-``` 
-
-## Create a Linked List
-
-Always add a dummy node at the beginning for null case.
+// If no cycle, 'slow' is at the middle when loop ends
+```

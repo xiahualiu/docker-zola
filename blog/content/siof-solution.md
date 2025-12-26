@@ -1,91 +1,107 @@
 +++
-title = "Solve SIOF (Static Initialization Order Fiasco) with Meyer's Singleton."
+++
+title = "Solving the Static Initialization Order Fiasco (SIOF) with Meyer's Singleton"
 date = 2025-01-14
 draft = false
 [taxonomies]
-  tags = ["Linux"]
+  tags = ["C++", "System Programming", "Design Patterns"]
 [extra]
   toc = true
-	keywords = "C++"
+  keywords = "C++, SIOF, Singleton, Meyer's Singleton, Static Initialization"
 +++
 
 ## What is SIOF?
-The Static Initialization Order Fiasco (SIOF) is a common C++ issue that occurs when initialization order of static objects across different translation units is undefined. As explained in the C++ standard:
 
-> The static initialization order fiasco refers to the ambiguity in the order that objects with static storage duration in different translation units are initialized in.
+The **Static Initialization Order Fiasco (SIOF)** is a bug that appears when one translation unit initializes a global object that depends on a global object from another translation unit. Within a single file, globals initialize top to bottom. Across files, the order is undefined, so a dependency may run before its prerequisite exists.
 
-## A Simple SIOF Example
+## Example: Logger vs Database
+
+Two files each define a global: a logger and a database. The database logs during construction, so it relies on the logger being ready.
 
 ```cpp
-// filepath: a.cpp
-class A {
-public:
-    A() { value = 42; }
-    int value;
+// logger.h
+struct Logger {
+    Logger() { std::cout << "Logger Initialized\n"; }
+    void log(const char* msg) { std::cout << "Log: " << msg << "\n"; }
 };
 
-static A globalA;  // Static object in first translation unit
+extern Logger globalLogger;
 ```
 
 ```cpp
-// filepath: b.cpp
-#include <iostream>
-extern A globalA;  // Reference to static object from a.cpp
+// logger.cpp
+#include "logger.h"
 
-class B {
-public:
-    B() { 
-        // May crash - globalA might not be initialized yet!
-        std::cout << "A's value: " << globalA.value << std::endl;
+Logger globalLogger;  // global instance
+```
+
+```cpp
+// database.cpp
+#include "logger.h"
+
+struct Database {
+    Database() {
+        // Risky: depends on another global's constructor having run
+        globalLogger.log("Database starting up...");
     }
 };
 
-static B globalB;  // Problem: Order of initialization is undefined
+static Database globalDB;  // SIOF may strike here
 ```
 
-## Understanding Initialization Stages
-There are two key stages in initializing non-local objects:
+If the runtime initializes `globalDB` before `globalLogger`, the database constructor calls `log()` on an unconstructed object, often causing a crash.
 
-### 1. Static Initialization
-- **Constant Initialization**: Applied to `const`/`constexpr` static objects.
-- **Zero Initialization**: Applied to other non-local static/thread-local variables.
+## Startup Phases
 
-### 2. Dynamic Initialization
-Occurs in two possible ways:
-- **Early Dynamic**: Happens before `main()`.
-- **Deferred Dynamic**: Happens after the first usage.
+- Static initialization (safe)
+  - Zero initialization: all global storage is zeroed.
+  - Constant initialization: e.g., `const int x = 42;` baked into the binary.
+- Dynamic initialization (risky)
+  - Global constructors run; order across translation units is unspecified.
 
-## The Solution: Deferred Initialization
-To avoid SIOF, we should use deferred initialization for all the non-const static variables. Here's a practical example:
+## Fix: Meyer's Singleton
+
+Move the static object inside a function so it initializes on first use, not at link time.
 
 ```cpp
-// filepath: a.cpp
-class A {
+// logger.h
+class Logger {
 public:
-    A() { value = 42; }
-    int value;
-    
-    static A& getInstance() {
-        static A instance;  // Safe: initialized on first use
+    Logger(const Logger&) = delete;
+    Logger& operator=(const Logger&) = delete;
+
+    static Logger& get() {
+        static Logger instance;  // magic static: initialized on first call
         return instance;
     }
+
+    void log(const char* msg) { std::cout << "Log: " << msg << "\n"; }
+
+private:
+    Logger() { std::cout << "Logger Initialized\n"; }
 };
 ```
 
 ```cpp
-// filepath: b.cpp
-class B {
-public:
-    B() {
-        // Safe: A is guaranteed to be initialized before use
-        std::cout << "A's value: " << A::getInstance().value << std::endl;
-    }
-    
-    static B& getInstance() {
-        static B instance;  // Also using function-local static
-        return instance;
-    }
+// database.cpp
+#include "logger.h"
+
+struct Database {
+    Database() { Logger::get().log("Database starting up..."); }
 };
+
+static Database globalDB;
 ```
 
-It is called **Meyer's Singleton**.
+## Why It Works
+
+- Lazy initialization: `Logger` constructs exactly when `get()` is first called.
+- Deterministic dependency: Even if `globalDB` starts first, it triggers `Logger::get()` and the logger is built before use.
+
+## Thread Safety
+
+Since C++11, function-local statics are initialized in a thread-safe manner: concurrent first calls to `get()` still construct `Logger` exactly once.
+
+## Takeaway
+
+When globals depend on each other, replace them with function-local statics (Meyer's Singleton) to avoid SIOF and guarantee safe, deterministic startup.
