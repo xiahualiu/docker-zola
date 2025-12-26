@@ -1,4 +1,4 @@
-++
++++
 title = "Locking Down Jenkins: Access via WireGuard VPN Only"
 date = 2024-04-19
 draft = false
@@ -7,7 +7,7 @@ draft = false
 [extra]
   toc = true
   keywords = "Docker"
-++
++++
 
 In the previous post [Set up Jenkins and Nginx Reverse Proxy in Docker Containers](/blog/nginx-jenkins-reverse-proxy), we successfully deployed a Jenkins controller and exposed it via Nginx.
 
