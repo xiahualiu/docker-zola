@@ -8,7 +8,7 @@ draft = false
   math = true
   math_auto_render = true
   toc = true
-  keywords = "Float, C++, Error"
+  keywords = "Math, Control System"
 +++
 
 This article outlines a practical way to detect when runtime data storage starts eroding meaningful precision.

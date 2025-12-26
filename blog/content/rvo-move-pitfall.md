@@ -3,10 +3,10 @@ title = "The C++ RVO Trap: When Deleted Move Constructors Break Your Code"
 date = 2025-01-14
 draft = false
 [taxonomies]
-  tags = ["C++", "Programming", "Linux"]
+  tags = ["C++"]
 [extra]
   toc = true
-  keywords = "C++, RVO, NRVO, Move Semantics, Copy Elision"
+  keywords = "C++"
 +++
 
 ## The Surprising Case

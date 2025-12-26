@@ -3,10 +3,10 @@ title = "Set up Let's Encrypt (Certbot) and Nginx in Docker containers"
 date = 2024-04-18
 draft = false
 [taxonomies]
-  tags = ["Docker", "Nginx", "DevOps"]
+  tags = ["Docker"]
 [extra]
   toc = true
-  keywords = "Docker, Nginx, Certbot, Let's Encrypt, SSL, HTTPS"
+  keywords = "Docker"
 +++
 This post demonstrates how to obtain Let's Encrypt SSL certificates for your self-hosted website using Nginx and Docker containers.
 

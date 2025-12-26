@@ -3,10 +3,10 @@ title = "LeetCode Linked List Question Summary"
 date = 2024-11-09
 draft = false
 [taxonomies]
-  tags = ["LeetCode", "C++", "Algorithm", "Linked List"]
+  tags = ["LeetCode", "C++", "Algorithm"]
 [extra]
   toc = true
-  keywords = "LeetCode, C++, Algorithm, Linked List"
+  keywords = "LeetCode, C++, Algorithm"
 +++
 
 After solving around 20 LeetCode linked-list problems, here is a concise summary of patterns and templates.

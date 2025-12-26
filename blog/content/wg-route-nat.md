@@ -6,7 +6,7 @@ draft = false
   tags = ["Linux"]
 [extra]
   toc = true
-  keywords = "Network, nftables, NAT"
+  keywords = "Linux"
 +++
 
 Hi, I am the maintainer of the GitHub project [wg_gaming_installer](https://github.com/xiahualiu/wg_gaming_installer). This post intends to explain how the `nftables` rules work. It also serves as excellent reading material for anyone who wants to learn more about NAT (Network Address Translation) and IP routing.

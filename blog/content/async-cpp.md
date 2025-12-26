@@ -3,7 +3,7 @@ title = "Asynchronous Multi-Thread Design Pattern with C++"
 date = 2024-10-19
 draft = false
 [taxonomies]
-  tags = ["Design Pattern", "C++"]
+  tags = ["Concurrent Programming", "C++"]
 [extra]
   toc = true
     keywords = "Concurrent Programming, C++"

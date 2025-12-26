@@ -4,10 +4,10 @@ title = "Solving the Static Initialization Order Fiasco (SIOF) with Meyer's Sing
 date = 2025-01-14
 draft = false
 [taxonomies]
-  tags = ["C++", "System Programming", "Design Patterns"]
+  tags = ["C++"]
 [extra]
   toc = true
-  keywords = "C++, SIOF, Singleton, Meyer's Singleton, Static Initialization"
+  keywords = "C++"
 +++
 
 ## What is SIOF?

@@ -3,10 +3,10 @@ title = "The Art of Flattening: How to NOT Nest Your Code"
 date = 2024-05-10
 draft = false
 [taxonomies]
-  tags = ["Design Patterns", "C++", "Clean Code"]
+  tags = ["C++"]
 [extra]
   toc = true
-  keywords = "Code, C++, Design Patterns, Nesting, Guard Clauses"
+  keywords = "C++"
 +++
 
 At the very beginning of the [Linux kernel coding style](https://www.kernel.org/doc/html/v4.10/process/coding-style.html) document, it bluntly states:

@@ -3,10 +3,10 @@ title = "Ubuntu 24.04 LTS Cloud Server Quick Configuration"
 date = 2024-09-28
 draft = false
 [taxonomies]
-  tags = ["Linux", "Ubuntu", "Server"]
+  tags = ["Linux"]
 [extra]
   toc = true
-  keywords = "Linux, Ubuntu, Configuration"
+  keywords = "Linux"
 +++
 
 This is a personal reference note for configuring a fresh cloud server instance running **Ubuntu 24.04 LTS** (Noble Numbat). It covers essential system updates, storage mounting, network hardening, and security best practices.

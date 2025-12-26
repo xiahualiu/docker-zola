@@ -6,7 +6,7 @@ draft = false
   tags = ["LeetCode", "C++", "Algorithm"]
 [extra]
   toc = true
-	keywords = "LeetCode, C++, Algorithm
+	keywords = "LeetCode, C++, Algorithm"
 +++
 
 ## Type Definition

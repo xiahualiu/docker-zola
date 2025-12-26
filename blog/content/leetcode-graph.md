@@ -3,10 +3,10 @@ title = "LeetCode Graph Question Summary"
 date = 2024-11-15
 draft = false
 [taxonomies]
-  tags = ["LeetCode", "C++", "Algorithm", "Graph"]
+  tags = ["LeetCode", "C++", "Algorithm"]
 [extra]
   toc = true
-  keywords = "LeetCode, C++, Algorithm, Graph"
+  keywords = "LeetCode, C++, Algorithm"
 +++
 
 ## Data Structure

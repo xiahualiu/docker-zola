@@ -6,7 +6,7 @@ draft = false
   tags = ["C++", "Algorithm"]
 [extra]
   toc = true
-  keywords = "C++, algorithm, insertion sort, bubble sort, heap sort, merge sort, quick sort"
+  keywords = "C++, Algorithm"
 +++
 
 All kinds of sorting algorithms, re-visited!

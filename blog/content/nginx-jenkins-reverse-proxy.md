@@ -3,10 +3,10 @@ title = "Set up Jenkins and Nginx reverse proxy in Docker containers"
 date = 2024-04-20
 draft = false
 [taxonomies]
-  tags = ["Docker", "Jenkins", "Nginx"]
+  tags = ["Docker"]
 [extra]
   toc = true
-  keywords = "Docker, Jenkins, Nginx, Reverse Proxy, CI/CD, Container"
+  keywords = "Docker"
 +++
 This post demonstrates how to set up Jenkins in a Docker container and configure an Nginx container to act as a reverse proxy for the Jenkins web interface.
 
