@@ -1,5 +1,4 @@
 +++
-++
 title = "Solving the Static Initialization Order Fiasco (SIOF) with Meyer's Singleton"
 date = 2025-01-14
 draft = false
