@@ -5,6 +5,8 @@ draft = false
 [taxonomies]
   tags = ["C++"]
 [extra]
+  math = true
+  math_auto_render = true
   toc = true
   keywords = "C++"
 +++

@@ -5,6 +5,8 @@ draft = false
 [taxonomies]
   tags = ["LeetCode", "C++", "Algorithm"]
 [extra]
+  math = true
+  math_auto_render = true
   toc = true
   keywords = "LeetCode, C++, Algorithm"
 +++
