@@ -1,4 +1,4 @@
-++
++++
 title = "Precision loss detection in control systems."
 date = 2024-10-09
 draft = false
